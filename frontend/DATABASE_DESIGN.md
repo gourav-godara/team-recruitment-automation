@@ -53,9 +53,10 @@ One row per uploaded file.
 Unique: (`dataset_id`, `external_id`)
 
 ### members
-`id`, `team_id` -> teams, `full_name`, `email`, `resume_url`, `github_url`, `linkedin_url`,
+`id`, `team_id` -> teams, `full_name`, `email`, `gender`, `resume_url`, `github_url`, `linkedin_url`,
 `portfolio_url`, `resume_text`
 All fields except `id` and `team_id` are nullable.
+`gender`: optional TEXT (`female` | `male` | `other`), used for diversity criteria (e.g., SIH requirement of at least 1 woman per team).
 
 ### criteria
 Registry of things we can score. Primary key is TEXT `key`.
@@ -171,7 +172,8 @@ Config JSON shape (stored in `configs.config_json`, also used by the UI controls
   "top_x": 50,
   "weights": { "github_contributions_1y": 0.4, "projects": 0.4, "education": 0.2 },
   "hard_filters": [
-    { "criterion_key": "github_contributions_1y", "operator": ">=", "value": 50, "applies_to": "any_member" }
+    { "criterion_key": "github_contributions_1y", "operator": ">=", "value": 50, "applies_to": "any_member" },
+    { "criterion_key": "gender", "operator": "==", "value": "female", "applies_to": "at_least_1_member" }
   ],
   "team_aggregation": { "github_contributions_1y": "max" },
   "missing_data_policy": "flag_and_exclude_from_average",

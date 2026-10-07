@@ -35,6 +35,12 @@ export const mockRun = {
         value: 'strictly_within_window',
         applies_to: 'team',
       },
+      {
+        criterion_key: 'gender',
+        operator: '==',
+        value: 'female',
+        applies_to: 'at_least_1_member',
+      },
     ],
     team_aggregation: {
       github_contributions_1y: 'max',
@@ -102,6 +108,7 @@ export const mockTeams = [
     rules: [
       { rule_name: 'Commit window during hackathon', passed: 1, details: '64 commits within 36hr window' },
       { rule_name: 'Min 1 member with GitHub data', passed: 1, details: '4 of 4 members provided verified GitHub' },
+      { rule_name: 'Gender diversity (at least 1 woman)', passed: 1, details: '2 female members in team (Passed SIH rule)' },
       { rule_name: 'Repo 404 check', passed: 1, details: 'Public repo active with MIT license' },
     ],
   },

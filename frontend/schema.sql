@@ -38,6 +38,7 @@ CREATE TABLE members (
     team_id         INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
     full_name       TEXT,
     email           TEXT,
+    gender          TEXT,               -- optional: 'female', 'male', 'other' (e.g. for SIH 'at least 1 woman per team' rule)
     resume_url      TEXT,
     github_url      TEXT,
     linkedin_url    TEXT,
