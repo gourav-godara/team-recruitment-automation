@@ -1,3 +1,4 @@
+import math
 from typing import Dict, List, Optional, Tuple
 from backend.app.schemas.scoring import (
     AggregationType,
@@ -66,6 +67,25 @@ def calculate_team_score(
             sig = team.team_signals[criterion]
             member_signals = [sig]
 
+        # Scoring boundary validation: check member/team signals entering scoring for this criterion
+        for sig in member_signals:
+            if sig.status in (SignalState.PRESENT, SignalState.FLAGGED) and sig.value is not None:
+                if isinstance(sig.value, bool):
+                    raise ValueError(
+                        f"Criterion '{criterion}' score for team '{team.team_id}' must be numeric, not boolean "
+                        f"(received {sig.value})."
+                    )
+                if not isinstance(sig.value, (int, float)) or not math.isfinite(sig.value):
+                    raise ValueError(
+                        f"Criterion '{criterion}' score for team '{team.team_id}' must be a finite number "
+                        f"(received {sig.value})."
+                    )
+                if not (0.0 <= sig.value <= 100.0):
+                    raise ValueError(
+                        f"Criterion '{criterion}' score for team '{team.team_id}' must be between 0 and 100 "
+                        f"(received {sig.value})."
+                    )
+
         agg_sig = aggregate_team_signal(
             criterion,
             member_signals,
@@ -73,6 +93,14 @@ def calculate_team_score(
             missing_policy,
             allow_flagged=config.allow_flagged_in_scoring,
         )
+
+        if agg_sig.value is not None:
+            if not math.isfinite(agg_sig.value) or not (0.0 <= agg_sig.value <= 100.0):
+                raise ValueError(
+                    f"Aggregated score for criterion '{criterion}' in team '{team.team_id}' must be between 0 and 100 "
+                    f"(received {agg_sig.value})."
+                )
+
         states[criterion] = agg_sig.status
         flags.extend(agg_sig.flags)
 

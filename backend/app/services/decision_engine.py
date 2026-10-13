@@ -38,6 +38,20 @@ def evaluate_teams_pipeline(
     4. Deterministic Ranking & Top-X Cutoff
     5. Reproducibility metadata generation
     """
+    # 0. Check for duplicate team IDs
+    seen_ids = set()
+    duplicates = []
+    for t in teams:
+        if t.team_id in seen_ids:
+            duplicates.append(t.team_id)
+        seen_ids.add(t.team_id)
+    if duplicates:
+        sorted_dups = sorted(list(set(duplicates)))
+        raise ValueError(
+            f"Duplicate team_id(s) detected in evaluation request: {sorted_dups}. "
+            "Each team must have a unique team_id."
+        )
+
     # 1. Canonical hashes for auditability & reproducibility
     dataset_repr = [t.model_dump(mode="json") for t in teams]
     config_repr = config.model_dump(mode="json")

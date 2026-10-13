@@ -94,3 +94,42 @@ def test_scoring_evaluate_invalid_weights():
     }
     response = client.post("/api/v1/scoring/evaluate", json=payload)
     assert response.status_code == 422  # Pydantic validation error
+
+
+def test_scoring_evaluate_duplicate_team_ids_via_api():
+    payload = {
+        "teams": [
+            {"team_id": "DUP_1", "members": []},
+            {"team_id": "DUP_1", "members": []},
+        ],
+        "config": {"weights": {"projects": 1.0}},
+    }
+    response = client.post("/api/v1/scoring/evaluate", json=payload)
+    assert response.status_code == 422
+    assert "Duplicate team_id" in response.text
+
+
+def test_scoring_evaluate_invalid_top_x_via_api():
+    payload = {
+        "teams": [{"team_id": "T1", "members": []}],
+        "config": {"weights": {"projects": 1.0}, "top_x": 0},
+    }
+    response = client.post("/api/v1/scoring/evaluate", json=payload)
+    assert response.status_code == 422
+    assert "positive integer > 0" in response.text
+
+
+def test_scoring_evaluate_out_of_bounds_score_via_api():
+    payload = {
+        "teams": [
+            {
+                "team_id": "T1",
+                "members": [{"member_id": "M1", "signals": {"projects": 150.0}}],
+            }
+        ],
+        "config": {"weights": {"projects": 1.0}},
+    }
+    response = client.post("/api/v1/scoring/evaluate", json=payload)
+    assert response.status_code == 400
+    assert "between 0 and 100" in response.json()["detail"]["message"]
+
