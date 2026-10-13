@@ -1,3 +1,4 @@
+import math
 from typing import Any, List, Optional, Tuple
 from backend.app.schemas.scoring import (
     AggregationType,
@@ -13,7 +14,9 @@ from backend.app.schemas.scoring import (
 def is_numeric(val: Any) -> bool:
     if val is None or isinstance(val, bool):
         return False
-    return isinstance(val, (int, float))
+    if isinstance(val, (int, float)):
+        return math.isfinite(val)
+    return False
 
 
 def partition_signals(
@@ -79,7 +82,7 @@ def aggregate_average(
         flags.append(f"{criterion} missing for {missing_count} of {total_count} members")
 
     if available_count == 0:
-        status = SignalState.INVALID if invalid_count > 0 and missing_count == 0 else SignalState.MISSING
+        status = SignalState.INVALID if invalid_count > 0 else SignalState.MISSING
         return AggregatedSignal(
             criterion=criterion,
             value=None,
@@ -136,7 +139,7 @@ def aggregate_sum(
         flags.append(f"{criterion} missing for {missing_count} of {total_count} members")
 
     if available_count == 0:
-        status = SignalState.INVALID if invalid_count > 0 and missing_count == 0 else SignalState.MISSING
+        status = SignalState.INVALID if invalid_count > 0 else SignalState.MISSING
         return AggregatedSignal(
             criterion=criterion,
             value=None,
@@ -193,7 +196,7 @@ def aggregate_max(
         flags.append(f"{criterion} missing for {missing_count} of {total_count} members")
 
     if available_count == 0:
-        status = SignalState.INVALID if invalid_count > 0 and missing_count == 0 else SignalState.MISSING
+        status = SignalState.INVALID if invalid_count > 0 else SignalState.MISSING
         return AggregatedSignal(
             criterion=criterion,
             value=None,
@@ -250,7 +253,7 @@ def aggregate_min(
         flags.append(f"{criterion} missing for {missing_count} of {total_count} members")
 
     if available_count == 0:
-        status = SignalState.INVALID if invalid_count > 0 and missing_count == 0 else SignalState.MISSING
+        status = SignalState.INVALID if invalid_count > 0 else SignalState.MISSING
         return AggregatedSignal(
             criterion=criterion,
             value=None,
@@ -302,26 +305,58 @@ def evaluate_operator(actual: Any, op: RuleOperator, expected: Any) -> bool:
 
     try:
         if op == RuleOperator.EQ:
+            if isinstance(actual, bool) != isinstance(expected, bool) and (
+                isinstance(actual, (int, float, bool)) and isinstance(expected, (int, float, bool))
+            ):
+                return False
             return actual == expected
         elif op == RuleOperator.NEQ:
+            if isinstance(actual, bool) != isinstance(expected, bool) and (
+                isinstance(actual, (int, float, bool)) and isinstance(expected, (int, float, bool))
+            ):
+                return True
             return actual != expected
         elif op == RuleOperator.GT:
+            if isinstance(actual, bool) or isinstance(expected, bool):
+                return False
+            if not is_numeric(actual) or not is_numeric(expected):
+                return False
             return actual > expected
         elif op == RuleOperator.GTE:
+            if isinstance(actual, bool) or isinstance(expected, bool):
+                return False
+            if not is_numeric(actual) or not is_numeric(expected):
+                return False
             return actual >= expected
         elif op == RuleOperator.LT:
+            if isinstance(actual, bool) or isinstance(expected, bool):
+                return False
+            if not is_numeric(actual) or not is_numeric(expected):
+                return False
             return actual < expected
         elif op == RuleOperator.LTE:
+            if isinstance(actual, bool) or isinstance(expected, bool):
+                return False
+            if not is_numeric(actual) or not is_numeric(expected):
+                return False
             return actual <= expected
         elif op == RuleOperator.IN:
-            if isinstance(expected, (list, tuple, set)):
-                return actual in expected
-            return str(actual) in str(expected)
+            if not isinstance(expected, (list, tuple, set)):
+                raise ValueError(
+                    f"Operator '{op.value}' requires expected value to be a collection (list, set, or tuple), "
+                    f"received {type(expected).__name__}: {expected!r}"
+                )
+            return actual in expected
         elif op == RuleOperator.NOT_IN:
-            if isinstance(expected, (list, tuple, set)):
-                return actual not in expected
-            return str(actual) not in str(expected)
-    except (TypeError, ValueError):
+            if not isinstance(expected, (list, tuple, set)):
+                raise ValueError(
+                    f"Operator '{op.value}' requires expected value to be a collection (list, set, or tuple), "
+                    f"received {type(expected).__name__}: {expected!r}"
+                )
+            return actual not in expected
+    except (TypeError, ValueError) as e:
+        if isinstance(e, ValueError) and "collection" in str(e):
+            raise
         return False
 
     return False

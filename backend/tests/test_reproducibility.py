@@ -29,7 +29,7 @@ def build_comprehensive_test_dataset():
             members=[
                 Member(
                     member_id="M1_1",
-                    signals={"projects": 5, "github_contributions": 120, "achievements": 3},
+                    signals={"projects": 5, "github_contributions": 100, "achievements": 3},
                 ),
                 Member(
                     member_id="M1_2",
@@ -97,7 +97,7 @@ def build_comprehensive_test_dataset():
             members=[
                 Member(
                     member_id="M5_1",
-                    signals={"projects": 4, "github_contributions": 110, "achievements": 3},
+                    signals={"projects": 4, "github_contributions": 100, "achievements": 3},
                 ),
             ],
         ),

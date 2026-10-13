@@ -1,4 +1,5 @@
 from enum import Enum
+import math
 from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -77,10 +78,17 @@ class SignalValue(BaseModel):
         if not isinstance(data, dict):
             if data is None:
                 return {"value": None, "status": SignalState.MISSING}
+            if isinstance(data, float) and not math.isfinite(data):
+                return {"value": data, "status": SignalState.INVALID, "reason": "Non-finite numeric value"}
             return {"value": data, "status": SignalState.PRESENT}
 
         status = data.get("status")
         value = data.get("value")
+
+        if isinstance(value, float) and not math.isfinite(value):
+            data["status"] = SignalState.INVALID
+            data["reason"] = data.get("reason") or "Non-finite numeric value"
+            return data
 
         if status is None:
             if value is None and "value" not in data:
@@ -171,8 +179,18 @@ class RuleConfig(BaseModel):
     missing_policy: MissingDataPolicy = MissingDataPolicy.IGNORE
     description: Optional[str] = None
 
+    @field_validator("action")
+    @classmethod
+    def validate_action(cls, action: RuleAction) -> RuleAction:
+        if action != RuleAction.ELIGIBILITY:
+            raise ValueError(
+                f"RuleAction '{action.value}' is not supported in the MVP. "
+                "Only 'ELIGIBILITY' rules are supported."
+            )
+        return action
+
     @model_validator(mode="after")
-    def validate_percentage_threshold(self) -> "RuleConfig":
+    def validate_rule_config(self) -> "RuleConfig":
         if (self.aggregation or "").upper() == "PERCENTAGE":
             if self.threshold is None:
                 raise ValueError(
@@ -181,6 +199,12 @@ class RuleConfig(BaseModel):
             if not (0.0 <= self.threshold <= 1.0):
                 raise ValueError(
                     f"Rule '{self.name}' percentage threshold must be between 0.0 and 1.0 (received {self.threshold})."
+                )
+        if self.operator in (RuleOperator.IN, RuleOperator.NOT_IN):
+            if self.value is not None and not isinstance(self.value, (list, tuple, set)):
+                raise ValueError(
+                    f"Rule '{self.name}' with operator '{self.operator.value}' requires 'value' "
+                    f"to be a collection (list, tuple, or set), received {type(self.value).__name__}."
                 )
         return self
 
@@ -223,6 +247,17 @@ class ScoringConfig(BaseModel):
     allow_flagged_in_scoring: bool = False
     eligibility_rules: List[RuleConfig] = Field(default_factory=list)
     tie_breakers: List[str] = Field(default_factory=lambda: ["primary_score", "team_id"])
+
+    @field_validator("top_x", mode="before")
+    @classmethod
+    def validate_top_x(cls, val: Any) -> Optional[int]:
+        if val is None:
+            return None
+        if isinstance(val, bool):
+            raise ValueError("top_x must be a positive integer, not a boolean")
+        if not isinstance(val, int) or val <= 0:
+            raise ValueError(f"top_x must be a positive integer > 0 (received {val})")
+        return val
 
     @field_validator("weights")
     @classmethod
@@ -271,6 +306,23 @@ class TeamScoreResult(BaseModel):
 class ScoringEvaluationRequest(BaseModel):
     teams: List[Team]
     config: ScoringConfig
+
+    @field_validator("teams")
+    @classmethod
+    def validate_unique_team_ids(cls, teams: List[Team]) -> List[Team]:
+        seen = set()
+        duplicates = []
+        for t in teams:
+            if t.team_id in seen:
+                duplicates.append(t.team_id)
+            seen.add(t.team_id)
+        if duplicates:
+            sorted_dups = sorted(list(set(duplicates)))
+            raise ValueError(
+                f"Duplicate team_id(s) detected in evaluation request: {sorted_dups}. "
+                "Each team must have a unique team_id."
+            )
+        return teams
 
 
 class ScoringEvaluationResponse(BaseModel):
