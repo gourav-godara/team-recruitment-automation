@@ -36,11 +36,11 @@ class CSVParser(BaseParser):
 
     def parse_string(self, content: str) -> List[Dict[str, Any]]:
         """Parse raw CSV string content into raw team/member records."""
-        if "\0" in content:
-            raise ParsingError("Malformed CSV content: contains NUL character.")
-
         if not content.strip():
             return []
+
+        if "\x00" in content:
+            raise ParsingError("CSV content contains invalid NULL bytes.")
 
         delimiter = self._detect_delimiter(content)
         f = io.StringIO(content.strip())
@@ -53,20 +53,17 @@ class CSVParser(BaseParser):
         cleaned_fieldnames = [fn.strip() if fn else "" for fn in reader.fieldnames]
         rows: List[Dict[str, Any]] = []
 
-        try:
-            for line_num, raw_row in enumerate(reader, start=2):
-                cleaned_row = {}
-                for k, v in raw_row.items():
-                    if k is not None:
-                        cleaned_k = k.strip()
-                        cleaned_v = v.strip() if isinstance(v, str) else v
-                        cleaned_row[cleaned_k] = cleaned_v
-                # Skip completely empty rows
-                if any(cleaned_row.values()):
-                    cleaned_row["_source_line"] = line_num
-                    rows.append(cleaned_row)
-        except csv.Error as e:
-            raise ParsingError(f"Malformed CSV syntax: {str(e)}")
+        for line_num, raw_row in enumerate(reader, start=2):
+            cleaned_row = {}
+            for k, v in raw_row.items():
+                if k is not None:
+                    cleaned_k = k.strip()
+                    cleaned_v = v.strip() if isinstance(v, str) else v
+                    cleaned_row[cleaned_k] = cleaned_v
+            # Skip completely empty rows
+            if any(cleaned_row.values()):
+                cleaned_row["_source_line"] = line_num
+                rows.append(cleaned_row)
 
         if not rows:
             return []
