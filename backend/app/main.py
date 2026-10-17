@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from backend.app.api.auth import router as auth_router
 from backend.app.api.campaigns import router as campaigns_router
@@ -8,16 +9,19 @@ from backend.app.api.imports import router as imports_router
 from backend.app.api.scoring import router as scoring_router
 from backend.app.core.database import init_db
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
 app = FastAPI(
     title="Team Recruitment Automation Tool",
     description="Configurable, explainable, and reproducible team shortlisting decision engine",
     version="2.0.0",
+    lifespan=lifespan,
 )
-
-
-@app.on_event("startup")
-def on_startup():
-    init_db()
 
 
 @app.get("/health")

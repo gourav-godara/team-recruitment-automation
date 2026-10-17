@@ -23,6 +23,7 @@ from backend.app.models.entities import (
     Criterion,
     DataFlag,
     Dataset,
+    LeaderboardView,
     Member,
     MemberSignal,
     Override,
@@ -204,3 +205,66 @@ def test_no_silent_fallback_when_postgres_fails(monkeypatch):
         next(gen)
 
     assert "PostgreSQL is configured" in str(exc_info.value)
+
+
+def test_migration_002_cascading_foreign_keys_and_unique_constraints():
+    """Verify that models contain cascading foreign keys and unique constraints specified in Migration 002."""
+    from backend.app.core.database import HAS_SQLALCHEMY
+
+    if HAS_SQLALCHEMY:
+        # Check Run.dataset_id foreign key ondelete
+        run_fks = Run.__table__.foreign_keys
+        dataset_fk = next(fk for fk in run_fks if fk.column.table.name == "datasets")
+        assert dataset_fk.ondelete == "CASCADE"
+
+        # Check RunResult.team_id ondelete
+        rr_fks = RunResult.__table__.foreign_keys
+        team_fk = next(fk for fk in rr_fks if fk.column.table.name == "teams")
+        assert team_fk.ondelete == "CASCADE"
+
+        # Check Override.team_id ondelete
+        ov_fks = Override.__table__.foreign_keys
+        ov_team_fk = next(fk for fk in ov_fks if fk.column.table.name == "teams")
+        assert ov_team_fk.ondelete == "CASCADE"
+
+        # Check MemberSignal unique constraint
+        ms_uq_names = {c.name for c in MemberSignal.__table__.constraints if hasattr(c, "columns")}
+        assert "uq_member_criterion" in ms_uq_names
+
+        # Check Override unique constraint
+        ov_uq_names = {c.name for c in Override.__table__.constraints if hasattr(c, "columns")}
+        assert "uq_run_team_override" in ov_uq_names
+
+        # Check PairwiseComparison unique constraint
+        pc_uq_names = {c.name for c in PairwiseComparison.__table__.constraints if hasattr(c, "columns")}
+        assert "uq_run_pair_comparison" in pc_uq_names
+
+
+def test_leaderboard_view_and_service():
+    """Verify LeaderboardView mapping and EvaluationService.get_leaderboard()."""
+    assert LeaderboardView.__tablename__ == "v_leaderboard"
+
+    session = InMemoryTransactionSession()
+    service = ImportService()
+    csv_data = (
+        "team_id,team_name,name,email,experience_years\n"
+        "T1,Alpha Team,Alice,alice@example.com,5.0\n"
+        "T2,Beta Team,Bob,bob@example.com,2.0\n"
+    )
+    res = service.process_file_content(csv_data, filename="leaderboard_test.csv")
+    ds = ImportRepository.save_import_result(session, res, filename="leaderboard_test.csv")
+    session.commit()
+
+    teams = ImportRepository.get_dataset_teams(session, ds.id)
+    config = ScoringConfig(weights={"experience_years": 1.0})
+
+    eval_resp = EvaluationService.evaluate_and_persist(session, teams, config, dataset_id=ds.id)
+    session.commit()
+
+    leaderboard = EvaluationService.get_leaderboard(session, eval_resp.run_id)
+    assert len(leaderboard) == 2
+    assert leaderboard[0].rank == 1
+    assert leaderboard[0].team_code == "T1"
+    assert leaderboard[0].total_score > leaderboard[1].total_score
+    assert leaderboard[0].dataset_name == "leaderboard_test.csv"
+

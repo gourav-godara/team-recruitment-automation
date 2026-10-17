@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from enum import Enum
 import math
 from typing import Any, Dict, List, Optional, Union
@@ -336,3 +337,57 @@ class ScoringEvaluationResponse(BaseModel):
     rejected_teams: int
     results: List[TeamScoreResult]
     config: ScoringConfig
+
+
+class LeaderboardItemResponse(BaseModel):
+    run_id: int
+    rank: Optional[int] = None
+    team_code: str
+    team_name: str
+    team_size: int
+    total_score: Optional[float] = None
+    outcome: str
+    has_missing_data: bool = False
+    explanation: Optional[str] = None
+    dataset_name: Optional[str] = None
+    run_at: Optional[datetime] = None
+
+
+class TeamOverrideRequest(BaseModel):
+    team_id: Union[int, str] = Field(description="Database team ID or external team code")
+    action: str = Field(description="Override action: 'pin', 'exclude', or 'waitlist'")
+    reason: str = Field(min_length=3, description="Justification/rationale for the reviewer override")
+
+    @field_validator("action")
+    @classmethod
+    def validate_action(cls, v: str) -> str:
+        clean = v.strip().lower()
+        if clean not in ("pin", "exclude", "waitlist"):
+            raise ValueError("Override action must be one of: 'pin', 'exclude', 'waitlist'")
+        return clean
+
+
+class TeamOverrideResponse(BaseModel):
+    id: Optional[int] = None
+    run_id: int
+    team_id: int
+    team_code: str
+    team_name: str
+    action: str
+    reason: str
+    outcome: str
+    created_at: datetime
+    created_by: Optional[str] = None
+
+
+class AuditLogEntryResponse(BaseModel):
+    id: Optional[int] = None
+    table_name: str
+    record_id: Optional[int] = None
+    action: str
+    old_values: Optional[Dict[str, Any]] = None
+    new_values: Optional[Dict[str, Any]] = None
+    changed_at: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
+    changed_by: Optional[str] = None
+
+

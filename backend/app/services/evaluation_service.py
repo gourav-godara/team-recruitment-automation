@@ -18,6 +18,8 @@ from schemas.team import TeamData
 from backend.app.models.entities import (
     AuditLog,
     Criterion,
+    Dataset,
+    LeaderboardView,
     Run,
     RunResult,
     RunRuleResult,
@@ -27,6 +29,7 @@ from backend.app.models.entities import (
 from backend.app.schemas.scoring import (
     CriterionDetail,
     EligibilityResult,
+    LeaderboardItemResponse,
     RuleResult,
     RuleStatus,
     ScoringConfig,
@@ -216,6 +219,7 @@ class EvaluationService:
                 "teams_shortlisted": run_row.teams_shortlisted,
                 "result_hash": run_row.result_hash,
             },
+            changed_at=datetime.now(timezone.utc),
         )
         db.add(audit)
 
@@ -345,3 +349,78 @@ class EvaluationService:
             results=reconstructed_results,
             config=config,
         )
+
+    @classmethod
+    def get_leaderboard(cls, db: Any, run_id: Union[int, str]) -> List[LeaderboardItemResponse]:
+        """Retrieves real-time leaderboard data for an evaluation run.
+
+        Uses the high-performance PostgreSQL 'v_leaderboard' view when available,
+        or dynamically joins evaluation tables in testing environments.
+        """
+        run_id_int = int(run_id)
+
+        # 1. Try querying the PostgreSQL view directly if supported by the session
+        try:
+            if hasattr(db, "query"):
+                view_results = (
+                    db.query(LeaderboardView)
+                    .filter(LeaderboardView.run_id == run_id_int)
+                    .order_by(LeaderboardView.rank.asc())
+                    .all()
+                )
+                if view_results:
+                    return [
+                        LeaderboardItemResponse(
+                            run_id=r.run_id,
+                            rank=r.rank,
+                            team_code=r.team_code,
+                            team_name=r.team_name,
+                            team_size=r.team_size,
+                            total_score=r.total_score,
+                            outcome=r.outcome,
+                            has_missing_data=r.has_missing_data,
+                            explanation=r.explanation,
+                            dataset_name=r.dataset_name,
+                            run_at=r.run_at,
+                        )
+                        for r in view_results
+                    ]
+        except Exception:
+            # Fall back to joined query below if view is not directly available in current session
+            pass
+
+        # 2. Resilient fallback query across RunResult, Team, Run, and Dataset
+        run = db.query(Run).get(run_id_int)
+        if not run:
+            return []
+
+        dataset = db.query(Dataset).get(run.dataset_id)
+        dataset_name = dataset.name if dataset else ""
+
+        run_results = db.query(RunResult).filter_by(run_id=run_id_int).all()
+        sorted_results = sorted(
+            run_results,
+            key=lambda r: (r.rank if r.rank is not None else 999999, -(r.total_score or 0.0)),
+        )
+
+        leaderboard: List[LeaderboardItemResponse] = []
+        for rr in sorted_results:
+            team = db.query(Team).get(rr.team_id)
+            leaderboard.append(
+                LeaderboardItemResponse(
+                    run_id=rr.run_id,
+                    rank=rr.rank,
+                    team_code=team.external_id if team else f"T{rr.team_id}",
+                    team_name=team.team_name if team else f"Team {rr.team_id}",
+                    team_size=team.team_size if team else 0,
+                    total_score=rr.total_score,
+                    outcome=rr.outcome,
+                    has_missing_data=rr.has_missing_data,
+                    explanation=rr.reason,
+                    dataset_name=dataset_name,
+                    run_at=run.run_at,
+                )
+            )
+
+        return leaderboard
+

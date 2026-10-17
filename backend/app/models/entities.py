@@ -131,6 +131,10 @@ if HAS_SQLALCHEMY and Base is not None:
         extractor_version = Column(Text, nullable=True)
         fetched_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
+        __table_args__ = (
+            UniqueConstraint("member_id", "criterion_key", name="uq_member_criterion"),
+        )
+
         member = relationship("Member", back_populates="signals")
         criterion = relationship("Criterion", back_populates="signals")
 
@@ -150,7 +154,7 @@ if HAS_SQLALCHEMY and Base is not None:
         __tablename__ = "runs"
 
         id = Column(Integer, primary_key=True, autoincrement=True)
-        dataset_id = Column(Integer, ForeignKey("datasets.id"), nullable=False)
+        dataset_id = Column(Integer, ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False)
         config_id = Column(Integer, ForeignKey("configs.id"), nullable=False)
         config_snapshot = Column(JSON_TYPE, nullable=False, default=dict)
         top_x = Column(Integer, nullable=False)
@@ -170,7 +174,7 @@ if HAS_SQLALCHEMY and Base is not None:
 
         id = Column(Integer, primary_key=True, autoincrement=True)
         run_id = Column(Integer, ForeignKey("runs.id", ondelete="CASCADE"), nullable=False)
-        team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
+        team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
         is_eligible = Column(Boolean, nullable=False, default=True)
         total_score = Column(Float, nullable=True)
         rank = Column(Integer, nullable=True)
@@ -191,7 +195,7 @@ if HAS_SQLALCHEMY and Base is not None:
 
         id = Column(Integer, primary_key=True, autoincrement=True)
         run_id = Column(Integer, ForeignKey("runs.id", ondelete="CASCADE"), nullable=False)
-        team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
+        team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
         criterion_key = Column(Text, ForeignKey("criteria.key"), nullable=False)
         team_raw_value = Column(Text, nullable=True)
         normalized_value = Column(Float, nullable=True)
@@ -209,7 +213,7 @@ if HAS_SQLALCHEMY and Base is not None:
 
         id = Column(Integer, primary_key=True, autoincrement=True)
         run_id = Column(Integer, ForeignKey("runs.id", ondelete="CASCADE"), nullable=False)
-        team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
+        team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
         rule_name = Column(Text, nullable=False)
         passed = Column(Boolean, nullable=False)
         details = Column(Text, nullable=True)
@@ -231,11 +235,15 @@ if HAS_SQLALCHEMY and Base is not None:
 
         id = Column(Integer, primary_key=True, autoincrement=True)
         run_id = Column(Integer, ForeignKey("runs.id", ondelete="CASCADE"), nullable=False)
-        team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
+        team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
         action = Column(Text, nullable=False)  # 'pin', 'exclude', 'waitlist'
         reason = Column(Text, nullable=False)
         created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
         created_by = Column(UUID_TYPE, nullable=True)
+
+        __table_args__ = (
+            UniqueConstraint("run_id", "team_id", name="uq_run_team_override"),
+        )
 
     class PairwiseComparison(Base):
         __tablename__ = "pairwise_comparisons"
@@ -249,6 +257,10 @@ if HAS_SQLALCHEMY and Base is not None:
         created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
         created_by = Column(UUID_TYPE, nullable=True)
 
+        __table_args__ = (
+            UniqueConstraint("run_id", "team_a_id", "team_b_id", name="uq_run_pair_comparison"),
+        )
+
     class AuditLog(Base):
         __tablename__ = "audit_log"
 
@@ -260,6 +272,21 @@ if HAS_SQLALCHEMY and Base is not None:
         new_values = Column(JSON_TYPE, nullable=True)
         changed_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
         changed_by = Column(UUID_TYPE, nullable=True)
+
+    class LeaderboardView(Base):
+        __tablename__ = "v_leaderboard"
+
+        run_id = Column(Integer, primary_key=True)
+        rank = Column(Integer)
+        team_code = Column(Text, primary_key=True)
+        team_name = Column(Text)
+        team_size = Column(Integer)
+        total_score = Column(Float)
+        outcome = Column(Text)
+        has_missing_data = Column(Boolean)
+        explanation = Column(Text)
+        run_at = Column(DateTime(timezone=True))
+        dataset_name = Column(Text)
 
 else:
     # Decoupled entity classes for testing environments where SQLAlchemy is absent
@@ -586,6 +613,35 @@ else:
             self.changed_at = changed_at or datetime.now(timezone.utc)
             self.changed_by = changed_by
 
+    class LeaderboardView:
+        __tablename__ = "v_leaderboard"
+
+        def __init__(
+            self,
+            run_id: int = 0,
+            rank: Optional[int] = None,
+            team_code: str = "",
+            team_name: str = "",
+            team_size: int = 0,
+            total_score: Optional[float] = None,
+            outcome: str = "shortlisted",
+            has_missing_data: bool = False,
+            explanation: Optional[str] = None,
+            run_at: Optional[datetime] = None,
+            dataset_name: str = "",
+        ):
+            self.run_id = run_id
+            self.rank = rank
+            self.team_code = team_code
+            self.team_name = team_name
+            self.team_size = team_size
+            self.total_score = total_score
+            self.outcome = outcome
+            self.has_missing_data = has_missing_data
+            self.explanation = explanation
+            self.run_at = run_at or datetime.now(timezone.utc)
+            self.dataset_name = dataset_name
+
 
 # Backward-compatible model aliases
 ImportDataset = Dataset
@@ -595,3 +651,4 @@ ScoringConfigModel = Config
 EvaluationRunModel = Run
 EvaluationResultModel = RunResult
 AuditLogModel = AuditLog
+LeaderboardViewModel = LeaderboardView
