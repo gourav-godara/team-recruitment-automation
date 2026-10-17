@@ -360,6 +360,15 @@ def test_api_full_workflow(client):
     assert alt_export_resp.status_code == 200
     assert alt_export_resp.text == export_resp.text
 
+    # 8. Retrieve real-time leaderboard via GET /api/v1/evaluations/{run_id}/leaderboard
+    leaderboard_resp = client.get(f"/api/v1/evaluations/{run_id}/leaderboard")
+    assert leaderboard_resp.status_code == 200
+    leaderboard_data = leaderboard_resp.json()
+    assert len(leaderboard_data) == 3
+    assert leaderboard_data[0]["rank"] == 1
+    assert leaderboard_data[0]["team_name"] == "Binary Bosses"
+    assert leaderboard_data[0]["dataset_name"] == "hackathon_teams.csv"
+
 
 def test_api_structured_error_handling(client):
     # 1. Empty upload
@@ -407,6 +416,10 @@ def test_api_structured_error_handling(client):
 
     # 7. Non-existent evaluation export
     resp = client.get("/api/v1/evaluations/999999/export")
+    assert resp.status_code == 404
+
+    # 8. Non-existent evaluation leaderboard
+    resp = client.get("/api/v1/evaluations/999999/leaderboard")
     assert resp.status_code == 404
 
 
