@@ -1,6 +1,7 @@
 import hashlib
 import json
 from typing import Any, List
+from backend.app.schemas.rules import RuleOutcome
 from backend.app.schemas.scoring import (
     ENGINE_VERSION,
     RuleStatus,
@@ -13,6 +14,7 @@ from backend.app.schemas.scoring import (
 from backend.app.services.eligibility_engine import evaluate_eligibility
 from backend.app.services.explanation_engine import generate_team_explanations
 from backend.app.services.ranking_engine import rank_teams
+from backend.app.services.rule_engine import ConfigurableRuleEngine
 from backend.app.services.scoring_engine import calculate_team_score
 
 
@@ -70,9 +72,23 @@ def evaluate_teams_pipeline(
     for team in teams:
         # Step A: Eligibility
         eligibility = evaluate_eligibility(team, config.eligibility_rules)
+        rule_summary = None
+        if config.configurable_rules:
+            rule_summary = ConfigurableRuleEngine.evaluate_team(team, config.configurable_rules)
 
-        # Step B: Scoring
-        if eligibility.status == RuleStatus.FAIL:
+        # Step B: Determine Eligibility Status
+        is_rejected = (
+            eligibility.status == RuleStatus.FAIL
+            or (rule_summary is not None and (not rule_summary.is_eligible or rule_summary.status == RuleOutcome.FAIL))
+        )
+        is_manual_review = (
+            rule_summary is not None
+            and (rule_summary.requires_manual_review or rule_summary.status == RuleOutcome.UNKNOWN)
+        )
+        is_insufficient = eligibility.status == RuleStatus.INSUFFICIENT_DATA
+
+        # Step C: Scoring
+        if is_rejected:
             score = None
             breakdown = {}
             states = {}
@@ -80,16 +96,22 @@ def evaluate_teams_pipeline(
             missing_notes = []
             flags = []
             status = "REJECTED"
+            if rule_summary and rule_summary.failed_rules:
+                for f in rule_summary.failed_rules:
+                    flags.append(f"Eligibility Rule Failure ({f.rule_name}): {f.explanation}")
         else:
             score, breakdown, states, details, missing_notes, flags = calculate_team_score(team, config)
-            if score is None:
-                status = "INSUFFICIENT_DATA"
-            elif eligibility.status == RuleStatus.INSUFFICIENT_DATA:
+            if is_manual_review:
+                status = "MANUAL_REVIEW"
+                if rule_summary:
+                    for u in rule_summary.unknown_rules:
+                        flags.append(f"Manual Review Required ({u.rule_name}): {u.explanation}")
+            elif score is None or is_insufficient:
                 status = "INSUFFICIENT_DATA"
             else:
                 status = "ELIGIBLE"
 
-        # Step C: Grounded explanations with transparent contribution metrics
+        # Step D: Grounded explanations with transparent contribution metrics
         reasons = generate_team_explanations(
             team_id=team.team_id,
             score=score,
@@ -101,6 +123,13 @@ def evaluate_teams_pipeline(
             flags=flags,
             config=config,
         )
+        if rule_summary:
+            if is_rejected:
+                reasons.insert(0, f"Team Ineligible: {rule_summary.summary}")
+            elif is_manual_review:
+                reasons.insert(0, f"Team Requires Manual Review: {rule_summary.summary}")
+            elif rule_summary.status == RuleOutcome.PASS and rule_summary.summary:
+                reasons.append(f"Rule Compliance: {rule_summary.summary}")
 
         team_res = TeamScoreResult(
             team_id=team.team_id,
@@ -109,6 +138,7 @@ def evaluate_teams_pipeline(
             rank=None,
             status=status,
             eligibility=eligibility,
+            rule_summary=rule_summary,
             score_breakdown=breakdown,
             criterion_states=states,
             detailed_contributions=details,

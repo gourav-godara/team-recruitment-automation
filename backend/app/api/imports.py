@@ -8,6 +8,8 @@ from typing import Any, Dict, List, Optional, Union
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from backend.app.core.database import get_db
+from backend.app.schemas.data_quality import DataQualityReport
+from backend.app.services.data_quality_service import DataQualityService
 from backend.app.services.import_repository import ImportRepository
 from backend.app.services.import_service import ImportService
 from schemas.config import ImportConfig
@@ -164,3 +166,26 @@ def get_import(
         "teams": [t.to_dict() for t in teams],
         "uploaded_at": dataset.uploaded_at.isoformat() if hasattr(dataset.uploaded_at, "isoformat") else str(dataset.uploaded_at),
     }
+
+
+@router.get(
+    "/{import_id}/quality-report",
+    response_model=DataQualityReport,
+    status_code=status.HTTP_200_OK,
+    summary="Generate a comprehensive data quality, missingness, and integrity report for an imported dataset",
+)
+def get_import_quality_report(
+    import_id: str,
+    db: Any = Depends(get_db),
+) -> DataQualityReport:
+    """Computes field completeness, missingness, duplicates, and URL validity for an imported dataset."""
+    dataset = ImportRepository.get_dataset_by_id(db, import_id)
+    if not dataset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Dataset Not Found", "message": f"No dataset found with id '{import_id}'"},
+        )
+
+    teams = ImportRepository.get_dataset_teams(db, dataset.id, only_valid=False)
+    return DataQualityService.analyze_teams(teams=teams, dataset_id=str(dataset.id))
+

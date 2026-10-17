@@ -6,6 +6,7 @@ from backend.app.api.evaluations import router as evaluations_router
 from backend.app.api.exports import router as exports_router
 from backend.app.api.github import router as github_router
 from backend.app.api.imports import router as imports_router
+from backend.app.api.rules import router as rules_router
 from backend.app.api.scoring import router as scoring_router
 from backend.app.core.database import init_db
 
@@ -72,4 +73,10 @@ app.include_router(
     auth_router,
     prefix="/api/v1/auth",
     tags=["auth"],
+)
+
+app.include_router(
+    rules_router,
+    prefix="/api/v1/rules",
+    tags=["rules"],
 )

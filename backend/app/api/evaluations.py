@@ -10,6 +10,9 @@ from pydantic import BaseModel, Field
 
 from backend.app.core.database import get_db
 from backend.app.core.security import get_current_user_id
+from backend.app.models.entities import Run
+from backend.app.schemas.data_quality import DataQualityReport
+from backend.app.schemas.sensitivity import SensitivityComparison
 from backend.app.schemas.scoring import (
     AuditLogEntryResponse,
     LeaderboardItemResponse,
@@ -18,10 +21,13 @@ from backend.app.schemas.scoring import (
     TeamOverrideRequest,
     TeamOverrideResponse,
 )
+from backend.app.services.data_quality_service import DataQualityService
 from backend.app.services.evaluation_service import EvaluationService
 from backend.app.services.export_service import ExportService
+from backend.app.services.import_adapter import adapt_team_data_list
 from backend.app.services.import_repository import ImportRepository
 from backend.app.services.override_service import OverrideService
+from backend.app.services.sensitivity_service import SensitivityService
 
 router = APIRouter()
 
@@ -225,5 +231,83 @@ def get_audit_trail(
         )
     trail = OverrideService.get_run_audit_trail(db, run_id)
     return [AuditLogEntryResponse(**t) for t in trail]
+
+
+class SensitivityPreviewRequest(BaseModel):
+    new_config: ScoringConfig
+
+
+@router.post(
+    "/{run_id}/sensitivity-preview",
+    response_model=SensitivityComparison,
+    status_code=status.HTTP_200_OK,
+    summary="Simulate 'what-if' sensitivity analysis comparing saved run with a new scoring configuration",
+)
+def preview_sensitivity(
+    run_id: str,
+    request: SensitivityPreviewRequest,
+    db: Any = Depends(get_db),
+) -> SensitivityComparison:
+    saved_eval = EvaluationService.get_saved_evaluation(db, run_id)
+    if not saved_eval:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Evaluation Run Not Found", "message": f"Run '{run_id}' does not exist."},
+        )
+
+    # Fetch dataset associated with run
+    try:
+        int_run_id = int(run_id)
+        run_record = db.query(Run).filter_by(id=int_run_id).first()
+    except ValueError:
+        run_record = db.query(Run).filter_by(id=run_id).first()
+
+    if not run_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Run Record Not Found", "message": f"Run database record for '{run_id}' not found."},
+        )
+
+    teams = ImportRepository.get_dataset_teams(db, run_record.dataset_id, only_valid=True)
+    if not teams:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "No Evaluatable Teams", "message": f"Dataset for run '{run_id}' contains no valid teams."},
+        )
+
+    domain_teams = adapt_team_data_list(teams)
+
+    return SensitivityService.simulate_what_if(
+        teams=domain_teams,
+        base_config=saved_eval.config,
+        new_config=request.new_config,
+    )
+
+
+@router.get(
+    "/{run_id}/quality-report",
+    response_model=DataQualityReport,
+    status_code=status.HTTP_200_OK,
+    summary="Get data quality, missingness, and integrity report for an evaluation run's dataset",
+)
+def get_run_quality_report(
+    run_id: str,
+    db: Any = Depends(get_db),
+) -> DataQualityReport:
+    try:
+        int_run_id = int(run_id)
+        run_record = db.query(Run).filter_by(id=int_run_id).first()
+    except ValueError:
+        run_record = db.query(Run).filter_by(id=run_id).first()
+
+    if not run_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Evaluation Run Not Found", "message": f"Run '{run_id}' does not exist."},
+        )
+
+    teams = ImportRepository.get_dataset_teams(db, run_record.dataset_id, only_valid=False)
+    return DataQualityService.analyze_teams(teams=teams, dataset_id=str(run_record.dataset_id))
+
 
 
