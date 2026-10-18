@@ -6,7 +6,9 @@ export default function SchemaSidebar({ activeStage, onStageSelect }) {
 
   const currentStage =
     activeStage ||
-    (location.pathname.startsWith('/ranked') || location.pathname.startsWith('/results')
+    (location.pathname.startsWith('/stability') || location.pathname.startsWith('/stress')
+      ? 'stability-stress'
+      : location.pathname.startsWith('/ranked') || location.pathname.startsWith('/results')
       ? 'ranked-results'
       : location.pathname.startsWith('/scoring') || location.pathname.startsWith('/weights')
       ? 'scoring-engine'
@@ -96,6 +98,8 @@ export default function SchemaSidebar({ activeStage, onStageSelect }) {
                     navigate('/scoring-engine');
                   } else if (stage.id === 'ranked-results') {
                     navigate('/ranked-results');
+                  } else if (stage.id === 'stability-stress') {
+                    navigate('/stability-stress');
                   }
                   if (onStageSelect) {
                     onStageSelect(stage.id);

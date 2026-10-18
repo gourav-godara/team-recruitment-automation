@@ -4,6 +4,7 @@ import SchemaMapperPage from './pages/SchemaMapperPage';
 import DataQualityPage from './pages/DataQualityPage';
 import ScoringEnginePage from './pages/ScoringEnginePage';
 import RankedResultsPage from './pages/RankedResultsPage';
+import StabilityStressPage from './pages/StabilityStressPage';
 
 export default function App() {
   return (
@@ -22,6 +23,12 @@ export default function App() {
           <Route path="/ranked-results" element={<RankedResultsPage />} />
           <Route path="/ranked" element={<RankedResultsPage />} />
           <Route path="/results" element={<RankedResultsPage />} />
+          <Route path="/stability-stress" element={<StabilityStressPage />} />
+          <Route path="/stress-test" element={<StabilityStressPage />} />
+          <Route path="/stability" element={<StabilityStressPage />} />
+          <Route path="/stress" element={<StabilityStressPage />} />
+          <Route path="/page-5" element={<StabilityStressPage />} />
+          <Route path="/page-6" element={<StabilityStressPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
