@@ -6,7 +6,9 @@ export default function SchemaSidebar({ activeStage, onStageSelect }) {
 
   const currentStage =
     activeStage ||
-    (location.pathname.startsWith('/data-quality') || location.pathname.startsWith('/quality')
+    (location.pathname.startsWith('/scoring') || location.pathname.startsWith('/weights')
+      ? 'scoring-engine'
+      : location.pathname.startsWith('/data-quality') || location.pathname.startsWith('/quality')
       ? 'data-quality'
       : location.pathname.startsWith('/schema') || location.pathname.startsWith('/import')
       ? 'import-schema'
@@ -88,6 +90,8 @@ export default function SchemaSidebar({ activeStage, onStageSelect }) {
                     navigate('/schema-mapper');
                   } else if (stage.id === 'data-quality') {
                     navigate('/data-quality');
+                  } else if (stage.id === 'scoring-engine') {
+                    navigate('/scoring-engine');
                   }
                   if (onStageSelect) {
                     onStageSelect(stage.id);
