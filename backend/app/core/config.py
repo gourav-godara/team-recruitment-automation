@@ -61,5 +61,15 @@ class Settings:
     GITHUB_TOKEN: Optional[str] = os.getenv("GITHUB_TOKEN", None)
     GITHUB_API_TIMEOUT: float = float(os.getenv("GITHUB_API_TIMEOUT", "8.0"))
 
+    # Supabase Auth & Gateway configuration
+    SUPABASE_URL: Optional[str] = os.getenv("SUPABASE_URL", None)
+    SUPABASE_KEY: Optional[str] = os.getenv("SUPABASE_KEY", None)
+    SUPABASE_SERVICE_ROLE_KEY: Optional[str] = os.getenv("SUPABASE_SERVICE_ROLE_KEY", None)
+    SUPABASE_JWT_SECRET: Optional[str] = os.getenv("SUPABASE_JWT_SECRET", None)
+
+    # Google OAuth credentials (configured in Google Cloud Console & Supabase Dashboard)
+    GOOGLE_CLIENT_ID: Optional[str] = os.getenv("GOOGLE_CLIENT_ID", None)
+    GOOGLE_CLIENT_SECRET: Optional[str] = os.getenv("GOOGLE_CLIENT_SECRET", None)
+
 
 settings = Settings()

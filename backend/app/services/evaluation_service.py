@@ -26,6 +26,7 @@ from backend.app.models.entities import (
     RunScoreDetail,
     Team,
 )
+from backend.app.schemas.rules import RuleOutcome
 from backend.app.schemas.scoring import (
     CriterionDetail,
     EligibilityResult,
@@ -196,16 +197,50 @@ class EvaluationService:
                 db.add(score_detail)
 
             # Persist rule evaluations in 'run_rule_results'
-            all_rule_results = res.eligibility.passed_rules + res.eligibility.failed_rules
-            for rr in all_rule_results:
-                rule_row = RunRuleResult(
-                    run_id=run_row.id,
-                    team_id=db_team_id,
-                    rule_name=rr.rule_name,
-                    passed=(rr.status == RuleStatus.PASS),
-                    details=rr.reason or "",
+            if res.rule_summary is not None:
+                all_rules = (
+                    res.rule_summary.passed_rules
+                    + res.rule_summary.failed_rules
+                    + res.rule_summary.unknown_rules
+                    + res.rule_summary.error_rules
                 )
-                db.add(rule_row)
+                for r_detail in all_rules:
+                    details_payload = json.dumps({
+                        "rule_id": r_detail.rule_id,
+                        "status": r_detail.outcome.value,
+                        "severity": r_detail.severity,
+                        "explanation": r_detail.explanation,
+                        "evidence": r_detail.evidence,
+                    })
+                    rule_row = RunRuleResult(
+                        run_id=run_row.id,
+                        team_id=db_team_id,
+                        rule_name=r_detail.rule_name,
+                        passed=(r_detail.outcome == RuleOutcome.PASS),
+                        details=details_payload,
+                        status=r_detail.outcome.value,
+                        rule_id=r_detail.rule_id,
+                        severity=r_detail.severity,
+                        evidence=r_detail.evidence,
+                    )
+                    db.add(rule_row)
+            else:
+                all_rule_results = (
+                    res.eligibility.passed_rules
+                    + res.eligibility.failed_rules
+                    + res.eligibility.insufficient_rules
+                    + res.eligibility.flagged_rules
+                )
+                for rr in all_rule_results:
+                    rule_row = RunRuleResult(
+                        run_id=run_row.id,
+                        team_id=db_team_id,
+                        rule_name=rr.rule_name,
+                        passed=(rr.status == RuleStatus.PASS),
+                        details=rr.reason or "",
+                        status=rr.status.value,
+                    )
+                    db.add(rule_row)
 
         # 6. Audit log entry
         audit = AuditLog(

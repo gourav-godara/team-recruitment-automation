@@ -35,12 +35,12 @@ def client():
         app.dependency_overrides.clear()
 
 
+from backend.app.core.security import create_test_jwt
+
+
 def make_mock_jwt(sub: str) -> str:
-    """Creates an unencrypted mock JWT structure containing the given sub claim."""
-    header = base64.urlsafe_b64encode(b'{"alg":"HS256","typ":"JWT"}').decode().rstrip("=")
-    payload = base64.urlsafe_b64encode(json.dumps({"sub": sub, "role": "authenticated"}).encode()).decode().rstrip("=")
-    signature = base64.urlsafe_b64encode(b"sig").decode().rstrip("=")
-    return f"{header}.{payload}.{signature}"
+    """Creates a Supabase-compatible mock JWT signed with the active JWT secret."""
+    return create_test_jwt(sub=sub)
 
 
 def test_auth_me_dev_fallback(client):
@@ -131,3 +131,92 @@ def test_upload_dataset_linked_to_campaign(client):
     detail = detail_resp.json()
     assert detail["total_datasets"] == 1
     assert detail["datasets"][0]["name"] == "campus_teams.csv"
+
+
+def test_tenant_isolation_campaign_access(client):
+    """User B cannot access or delete User A's campaign."""
+    user_a = "11111111-1111-1111-1111-111111111111"
+    user_b = "22222222-2222-2222-2222-222222222222"
+    token_a = make_mock_jwt(user_a)
+    token_b = make_mock_jwt(user_b)
+
+    # 1. User A creates campaign
+    resp_a = client.post(
+        "/api/v1/campaigns",
+        json={"name": "ACM Private Hackathon"},
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    assert resp_a.status_code == 201
+    camp_id = resp_a.json()["id"]
+
+    # 2. User B tries to view User A's campaign -> 403 Forbidden
+    resp_b_get = client.get(
+        f"/api/v1/campaigns/{camp_id}",
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert resp_b_get.status_code == 403
+
+    # 3. User B tries to delete User A's campaign -> 403 Forbidden
+    resp_b_del = client.delete(
+        f"/api/v1/campaigns/{camp_id}",
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert resp_b_del.status_code == 403
+
+
+def test_tenant_isolation_dataset_upload_forbidden(client):
+    """User B cannot upload a dataset linked to User A's campaign."""
+    user_a = "11111111-1111-1111-1111-111111111111"
+    user_b = "22222222-2222-2222-2222-222222222222"
+    token_a = make_mock_jwt(user_a)
+    token_b = make_mock_jwt(user_b)
+
+    # 1. User A creates campaign
+    resp_a = client.post(
+        "/api/v1/campaigns",
+        json={"name": "ACM Hackathon"},
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    camp_id = resp_a.json()["id"]
+
+    # 2. User B tries to upload dataset into User A's campaign -> 403 Forbidden
+    sample_csv = "team_id,team_name,name,email,experience_years\nT1,Alpha,Alice,alice@example.com,2.0\n"
+    upload_resp = client.post(
+        f"/api/v1/imports?filename=forged.csv&campaign_id={camp_id}",
+        content=sample_csv,
+        headers={"content-type": "text/csv", "Authorization": f"Bearer {token_b}"},
+    )
+    assert upload_resp.status_code == 403
+
+
+def test_cryptographic_jwt_verification(client):
+    """When SUPABASE_JWT_SECRET is configured, signature must match or request is 401."""
+    from backend.app.core.config import settings
+    from backend.app.core.security import create_test_jwt
+
+    secret = "production-supabase-jwt-secret-key-12345"
+    old_secret = settings.SUPABASE_JWT_SECRET
+    settings.SUPABASE_JWT_SECRET = secret
+
+    try:
+        user_uuid = "33333333-3333-3333-3333-333333333333"
+        valid_token = create_test_jwt(sub=user_uuid, secret=secret)
+        forged_token = create_test_jwt(sub=user_uuid, secret="wrong-secret-key")
+
+        # 1. Valid token -> 200 OK
+        resp_valid = client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {valid_token}"},
+        )
+        assert resp_valid.status_code == 200
+        assert resp_valid.json()["user_id"] == user_uuid
+
+        # 2. Forged token with invalid signature -> 401 Unauthorized
+        resp_forged = client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {forged_token}"},
+        )
+        assert resp_forged.status_code == 401
+    finally:
+        settings.SUPABASE_JWT_SECRET = old_secret
+

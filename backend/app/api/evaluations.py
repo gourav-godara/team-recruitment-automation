@@ -9,7 +9,10 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
 
 from backend.app.core.database import get_db
-from backend.app.core.security import get_current_user_id
+from backend.app.core.security import DEV_USER_ID, get_current_user_id
+from backend.app.models.entities import Campaign, Run
+from backend.app.schemas.data_quality import DataQualityReport
+from backend.app.schemas.sensitivity import SensitivityComparison
 from backend.app.schemas.scoring import (
     AuditLogEntryResponse,
     LeaderboardItemResponse,
@@ -18,10 +21,13 @@ from backend.app.schemas.scoring import (
     TeamOverrideRequest,
     TeamOverrideResponse,
 )
+from backend.app.services.data_quality_service import DataQualityService
 from backend.app.services.evaluation_service import EvaluationService
 from backend.app.services.export_service import ExportService
+from backend.app.services.import_adapter import adapt_team_data_list
 from backend.app.services.import_repository import ImportRepository
 from backend.app.services.override_service import OverrideService
+from backend.app.services.sensitivity_service import SensitivityService
 
 router = APIRouter()
 
@@ -44,6 +50,7 @@ class EvaluateDatasetRequest(BaseModel):
 def evaluate_dataset(
     request: EvaluateDatasetRequest,
     db: Any = Depends(get_db),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
 ) -> ScoringEvaluationResponse:
     """Retrieves an imported dataset, executes the Core Decision Engine, and persists the evaluation run into 'runs'."""
     dataset = ImportRepository.get_dataset_by_id(db, request.dataset_id)
@@ -52,6 +59,14 @@ def evaluate_dataset(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": "Dataset Not Found", "message": f"Dataset '{request.dataset_id}' does not exist."},
         )
+
+    if dataset.campaign_id is not None:
+        campaign = db.query(Campaign).filter_by(id=dataset.campaign_id).first()
+        if campaign and current_user_id != DEV_USER_ID and campaign.owner_id != current_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"error": "Access Forbidden", "message": "You do not have permission to evaluate this dataset."},
+            )
 
     teams = ImportRepository.get_dataset_teams(db, dataset.id, only_valid=request.only_valid)
     if not teams:
@@ -89,29 +104,45 @@ def evaluate_dataset(
 )
 def get_evaluation(
     run_id: str,
+    anonymize: bool = False,
     db: Any = Depends(get_db),
 ) -> ScoringEvaluationResponse:
-    """Retrieves an evaluation run and its exact ranking and explanation outputs without recalculating."""
+    """Retrieves an evaluation run and its exact ranking and explanation outputs without recalculating.
+
+    Supports optional 'anonymize=true' Blind Review Mode (masks team and candidate names).
+    """
     saved_eval = EvaluationService.get_saved_evaluation(db, run_id)
     if not saved_eval:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": "Evaluation Run Not Found", "message": f"Run '{run_id}' does not exist."},
         )
+
+    if anonymize:
+        # Bias Shield: Anonymize team names
+        anonymized_results = []
+        for r in saved_eval.results:
+            r_copy = r.model_copy()
+            r_copy.name = f"Team_{r.team_id}"
+            anonymized_results.append(r_copy)
+        eval_copy = saved_eval.model_copy()
+        eval_copy.results = anonymized_results
+        return eval_copy
+
     return saved_eval
 
 
 @router.get(
     "/{run_id}/export",
     status_code=status.HTTP_200_OK,
-    summary="Export evaluation run results as an RFC 4180 compliant CSV",
+    summary="Export evaluation run results as an RFC 4180 compliant CSV (Full Audit)",
 )
 def export_evaluation_csv(
     run_id: str,
     db: Any = Depends(get_db),
 ) -> Response:
     """Streams a CSV file containing ranks, scores, breakdowns, and explanations."""
-    csv_content = ExportService.export_evaluation_run_to_csv(db, run_id)
+    csv_content = ExportService.export_full_audit_to_csv(db, run_id)
     if csv_content is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -121,8 +152,127 @@ def export_evaluation_csv(
     return Response(
         content=csv_content,
         media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="evaluation_{run_id}.csv"'},
+        headers={"Content-Disposition": f'attachment; filename="full_evaluation_audit_{run_id}.csv"'},
     )
+
+
+@router.get(
+    "/{run_id}/export/shortlist",
+    status_code=status.HTTP_200_OK,
+    summary="Download official Top-X Shortlist CSV",
+)
+def export_shortlist_endpoint(
+    run_id: str,
+    db: Any = Depends(get_db),
+) -> Response:
+    """Streams an RFC 4180 CSV containing only the officially shortlisted Top X teams."""
+    csv_content = ExportService.export_shortlist_to_csv(db, run_id)
+    if csv_content is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Evaluation Run Not Found", "message": f"Cannot export run '{run_id}': not found."},
+        )
+
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="shortlist_top_x_{run_id}.csv"'},
+    )
+
+
+@router.get(
+    "/{run_id}/export/audit",
+    status_code=status.HTTP_200_OK,
+    summary="Download full evaluation audit log CSV",
+)
+def export_audit_endpoint(
+    run_id: str,
+    db: Any = Depends(get_db),
+) -> Response:
+    """Streams a comprehensive audit CSV of all evaluated, cutoff, and disqualified teams."""
+    csv_content = ExportService.export_full_audit_to_csv(db, run_id)
+    if csv_content is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Evaluation Run Not Found", "message": f"Cannot export run '{run_id}': not found."},
+        )
+
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="full_evaluation_audit_{run_id}.csv"'},
+    )
+
+
+@router.get(
+    "/{run_id}/export/config",
+    status_code=status.HTTP_200_OK,
+    summary="Download audit configuration snapshot JSON with cryptographic hashes",
+)
+def export_config_endpoint(
+    run_id: str,
+    db: Any = Depends(get_db),
+) -> Response:
+    """Streams the exact JSON configuration snapshot used for this evaluation run."""
+    json_content = ExportService.export_configuration_snapshot_json(db, run_id)
+    if json_content is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Evaluation Run Not Found", "message": f"Cannot export run '{run_id}': not found."},
+        )
+
+    return Response(
+        content=json_content,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="run_configuration_snapshot_{run_id}.json"'},
+    )
+
+
+@router.get(
+    "/{run_id}/export/bundle",
+    status_code=status.HTTP_200_OK,
+    summary="1-Click Download complete recruitment audit bundle (.ZIP)",
+)
+def export_bundle_endpoint(
+    run_id: str,
+    db: Any = Depends(get_db),
+) -> Response:
+    """Streams a single .ZIP package containing shortlist_top_x.csv, full_evaluation_audit.csv, and run_configuration_snapshot.json."""
+    zip_bytes = ExportService.export_complete_bundle_zip(db, run_id)
+    if zip_bytes is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Evaluation Run Not Found", "message": f"Cannot export run '{run_id}': not found."},
+        )
+
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="recruitment_audit_bundle_{run_id}.zip"'},
+    )
+
+
+@router.get(
+    "/{run_id}/compare",
+    status_code=status.HTTP_200_OK,
+    summary="Pairwise head-to-head comparison between two candidate teams",
+)
+def compare_teams_endpoint(
+    run_id: str,
+    team_a: str,
+    team_b: str,
+    db: Any = Depends(get_db),
+):
+    """Provides side-by-side comparative analysis of two teams in an evaluation run."""
+    from backend.app.services.comparison_service import ComparisonService
+
+    res = ComparisonService.compare_teams(db=db, run_id=run_id, team_a_id=team_a, team_b_id=team_b)
+    if not res:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Comparison Failed", "message": f"Could not find teams '{team_a}' and/or '{team_b}' in run '{run_id}'."},
+        )
+    return res
 
 
 @router.get(
@@ -133,6 +283,7 @@ def export_evaluation_csv(
 )
 def get_leaderboard(
     run_id: str,
+    anonymize: bool = False,
     db: Any = Depends(get_db),
 ) -> List[LeaderboardItemResponse]:
     """Retrieves ranked leaderboard data directly from the high-performance 'v_leaderboard' PostgreSQL view."""
@@ -144,6 +295,11 @@ def get_leaderboard(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail={"error": "Evaluation Run Not Found", "message": f"Run '{run_id}' does not exist."},
             )
+
+    if anonymize and leaderboard:
+        for item in leaderboard:
+            item.team_name = f"Team_{item.team_code}"
+
     return leaderboard
 
 
@@ -225,5 +381,83 @@ def get_audit_trail(
         )
     trail = OverrideService.get_run_audit_trail(db, run_id)
     return [AuditLogEntryResponse(**t) for t in trail]
+
+
+class SensitivityPreviewRequest(BaseModel):
+    new_config: ScoringConfig
+
+
+@router.post(
+    "/{run_id}/sensitivity-preview",
+    response_model=SensitivityComparison,
+    status_code=status.HTTP_200_OK,
+    summary="Simulate 'what-if' sensitivity analysis comparing saved run with a new scoring configuration",
+)
+def preview_sensitivity(
+    run_id: str,
+    request: SensitivityPreviewRequest,
+    db: Any = Depends(get_db),
+) -> SensitivityComparison:
+    saved_eval = EvaluationService.get_saved_evaluation(db, run_id)
+    if not saved_eval:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Evaluation Run Not Found", "message": f"Run '{run_id}' does not exist."},
+        )
+
+    # Fetch dataset associated with run
+    try:
+        int_run_id = int(run_id)
+        run_record = db.query(Run).filter_by(id=int_run_id).first()
+    except ValueError:
+        run_record = db.query(Run).filter_by(id=run_id).first()
+
+    if not run_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Run Record Not Found", "message": f"Run database record for '{run_id}' not found."},
+        )
+
+    teams = ImportRepository.get_dataset_teams(db, run_record.dataset_id, only_valid=True)
+    if not teams:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "No Evaluatable Teams", "message": f"Dataset for run '{run_id}' contains no valid teams."},
+        )
+
+    domain_teams = adapt_team_data_list(teams)
+
+    return SensitivityService.simulate_what_if(
+        teams=domain_teams,
+        base_config=saved_eval.config,
+        new_config=request.new_config,
+    )
+
+
+@router.get(
+    "/{run_id}/quality-report",
+    response_model=DataQualityReport,
+    status_code=status.HTTP_200_OK,
+    summary="Get data quality, missingness, and integrity report for an evaluation run's dataset",
+)
+def get_run_quality_report(
+    run_id: str,
+    db: Any = Depends(get_db),
+) -> DataQualityReport:
+    try:
+        int_run_id = int(run_id)
+        run_record = db.query(Run).filter_by(id=int_run_id).first()
+    except ValueError:
+        run_record = db.query(Run).filter_by(id=run_id).first()
+
+    if not run_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Evaluation Run Not Found", "message": f"Run '{run_id}' does not exist."},
+        )
+
+    teams = ImportRepository.get_dataset_teams(db, run_record.dataset_id, only_valid=False)
+    return DataQualityService.analyze_teams(teams=teams, dataset_id=str(run_record.dataset_id))
+
 
 

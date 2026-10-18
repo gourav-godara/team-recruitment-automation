@@ -217,6 +217,10 @@ if HAS_SQLALCHEMY and Base is not None:
         rule_name = Column(Text, nullable=False)
         passed = Column(Boolean, nullable=False)
         details = Column(Text, nullable=True)
+        status = Column(String(20), nullable=True, default="PASS")
+        rule_id = Column(String(100), nullable=True)
+        severity = Column(String(20), nullable=True, default="mandatory")
+        evidence = Column(JSON_TYPE, nullable=True)
 
         run = relationship("Run", back_populates="rule_results")
 
@@ -520,6 +524,10 @@ else:
             rule_name: str = "",
             passed: bool = True,
             details: Optional[str] = None,
+            status: Optional[str] = "PASS",
+            rule_id: Optional[str] = None,
+            severity: Optional[str] = "mandatory",
+            evidence: Optional[Dict[str, Any]] = None,
         ):
             self.id = id
             self.run_id = run_id
@@ -527,6 +535,10 @@ else:
             self.rule_name = rule_name
             self.passed = passed
             self.details = details
+            self.status = status or ("PASS" if passed else "FAIL")
+            self.rule_id = rule_id
+            self.severity = severity or "mandatory"
+            self.evidence = evidence or {}
 
     class DataFlag:
         __tablename__ = "data_flags"

@@ -6,6 +6,7 @@ from backend.app.api.evaluations import router as evaluations_router
 from backend.app.api.exports import router as exports_router
 from backend.app.api.github import router as github_router
 from backend.app.api.imports import router as imports_router
+from backend.app.api.rules import router as rules_router
 from backend.app.api.scoring import router as scoring_router
 from backend.app.core.database import init_db
 
@@ -16,11 +17,22 @@ async def lifespan(app: FastAPI):
     yield
 
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(
     title="Team Recruitment Automation Tool",
     description="Configurable, explainable, and reproducible team shortlisting decision engine",
     version="2.0.0",
     lifespan=lifespan,
+)
+
+# Enable CORS for local frontend development (Next.js, Vite, React)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -72,4 +84,10 @@ app.include_router(
     auth_router,
     prefix="/api/v1/auth",
     tags=["auth"],
+)
+
+app.include_router(
+    rules_router,
+    prefix="/api/v1/rules",
+    tags=["rules"],
 )

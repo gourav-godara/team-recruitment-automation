@@ -1,4 +1,5 @@
 from typing import Any, List, Optional, Tuple
+from backend.app.schemas.rules import RuleOutcome
 from backend.app.schemas.scoring import (
     RuleStatus,
     ScoringConfig,
@@ -45,23 +46,35 @@ def rank_teams(
     config: ScoringConfig,
 ) -> List[TeamScoreResult]:
     """Applies deterministic sorting, tie-breaking, rank assignment, and top_x
-
-    selection to a list of evaluated teams. Ineligible/rejected teams are
-    preserved.
+    selection to a list of evaluated teams. Ineligible/rejected and manual-review
+    teams are preserved.
     """
     eligible_teams: List[TeamScoreResult] = []
     ineligible_teams: List[TeamScoreResult] = []
     insufficient_teams: List[TeamScoreResult] = []
 
     for r in results:
-        if r.eligibility.status == RuleStatus.FAIL:
+        is_rule_rejected = (
+            r.status == "REJECTED"
+            or r.eligibility.status == RuleStatus.FAIL
+            or (r.rule_summary is not None and (not r.rule_summary.is_eligible or r.rule_summary.status == RuleOutcome.FAIL))
+        )
+        is_manual_review = (
+            r.status == "MANUAL_REVIEW"
+            or (r.rule_summary is not None and (r.rule_summary.requires_manual_review or r.rule_summary.status == RuleOutcome.UNKNOWN))
+        )
+
+        if is_rule_rejected:
             r.status = "REJECTED"
+            r.rank = None
             ineligible_teams.append(r)
-        elif r.eligibility.status == RuleStatus.INSUFFICIENT_DATA:
-            r.status = "INSUFFICIENT_DATA"
+        elif is_manual_review:
+            r.status = "MANUAL_REVIEW"
+            r.rank = None
             insufficient_teams.append(r)
-        elif r.score is None:
+        elif r.eligibility.status == RuleStatus.INSUFFICIENT_DATA or r.score is None:
             r.status = "INSUFFICIENT_DATA"
+            r.rank = None
             insufficient_teams.append(r)
         else:
             eligible_teams.append(r)

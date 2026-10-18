@@ -4,6 +4,18 @@ import math
 from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from backend.app.schemas.rules import (
+    ConfigurableRule,
+    FailureAction,
+    MissingDataAction,
+    RuleCategory,
+    RuleEvaluationDetail,
+    RuleOutcome,
+    RuleSeverity,
+    RuleType,
+    TeamEligibilitySummary,
+)
+
 # Single source of truth for the Decision Engine Version
 ENGINE_VERSION: str = "0.1.0"
 
@@ -247,6 +259,7 @@ class ScoringConfig(BaseModel):
     criteria_missing_policies: Dict[str, MissingDataPolicy] = Field(default_factory=dict)
     allow_flagged_in_scoring: bool = False
     eligibility_rules: List[RuleConfig] = Field(default_factory=list)
+    configurable_rules: List[ConfigurableRule] = Field(default_factory=list)
     tie_breakers: List[str] = Field(default_factory=lambda: ["primary_score", "team_id"])
 
     @field_validator("top_x", mode="before")
@@ -296,6 +309,7 @@ class TeamScoreResult(BaseModel):
     rank: Optional[int] = None
     status: str  # SHORTLISTED, ELIGIBLE, REJECTED, INSUFFICIENT_DATA, REVIEW_REQUIRED
     eligibility: EligibilityResult
+    rule_summary: Optional[TeamEligibilitySummary] = None
     score_breakdown: Dict[str, Optional[float]] = Field(default_factory=dict)
     criterion_states: Dict[str, SignalState] = Field(default_factory=dict)
     detailed_contributions: List[CriterionDetail] = Field(default_factory=list)

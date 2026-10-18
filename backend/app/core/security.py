@@ -1,9 +1,12 @@
 """Authentication and security utilities for Supabase Auth integration."""
 
 import base64
+import hashlib
+import hmac
 import json
 import logging
 import os
+import time
 from typing import Any, Dict, Optional
 import uuid
 
@@ -21,20 +24,87 @@ bearer_scheme = HTTPBearer(auto_error=False)
 DEV_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
 
-def decode_jwt_unverified_claims(token: str) -> Dict[str, Any]:
-    """Extracts payload claims from a JWT without cryptographic verification.
+def _b64url_decode(s: str) -> bytes:
+    """Decodes a base64url string with proper padding."""
+    padded = s + "=" * (-len(s) % 4)
+    return base64.urlsafe_b64decode(padded)
 
-    Useful for reading user claims (sub, email, role) emitted by Supabase Auth gateway.
+
+def _b64url_encode(data: bytes) -> str:
+    """Encodes bytes to base64url without padding '=' characters."""
+    return base64.urlsafe_b64encode(data).decode("utf-8").rstrip("=")
+
+
+def create_test_jwt(
+    sub: str,
+    email: str = "recruiter@example.com",
+    role: str = "authenticated",
+    secret: Optional[str] = None,
+    expires_in: int = 3600,
+) -> str:
+    """Helper to generate standard Supabase-compatible HS256 JWT tokens for testing."""
+    header = {"alg": "HS256", "typ": "JWT"}
+    now = int(time.time())
+    payload = {
+        "sub": sub,
+        "email": email,
+        "role": role,
+        "aud": "authenticated",
+        "iat": now,
+        "exp": now + expires_in,
+    }
+    h_b64 = _b64url_encode(json.dumps(header).encode("utf-8"))
+    p_b64 = _b64url_encode(json.dumps(payload).encode("utf-8"))
+    signing_input = f"{h_b64}.{p_b64}".encode("utf-8")
+
+    jwt_secret = secret or settings.SUPABASE_JWT_SECRET or "dev-insecure-secret"
+    sig = hmac.new(jwt_secret.encode("utf-8"), signing_input, hashlib.sha256).digest()
+    sig_b64 = _b64url_encode(sig)
+    return f"{h_b64}.{p_b64}.{sig_b64}"
+
+
+def decode_jwt_token(token: str, verify_signature: bool = True) -> Dict[str, Any]:
+    """Decodes and validates a Supabase Auth JWT token.
+
+    If SUPABASE_JWT_SECRET is configured and verify_signature is True, cryptographically
+    verifies the HS256 HMAC signature and checks token expiration.
     """
+    parts = token.split(".")
+    if len(parts) != 3:
+        raise ValueError("Invalid JWT token format: expected header.payload.signature")
+
+    header_b64, payload_b64, sig_b64 = parts
+
+    # Cryptographic verification if secret is present
+    if settings.SUPABASE_JWT_SECRET and verify_signature:
+        signing_input = f"{header_b64}.{payload_b64}".encode("utf-8")
+        expected_sig = hmac.new(
+            settings.SUPABASE_JWT_SECRET.encode("utf-8"),
+            signing_input,
+            hashlib.sha256,
+        ).digest()
+        actual_sig = _b64url_decode(sig_b64)
+        if not hmac.compare_digest(expected_sig, actual_sig):
+            raise ValueError("Invalid JWT signature: token verification failed")
+
+    # Decode payload
     try:
-        parts = token.split(".")
-        if len(parts) != 3:
-            return {}
-        # Add base64 padding if needed
-        payload_b64 = parts[1]
-        padded = payload_b64 + "=" * (-len(payload_b64) % 4)
-        decoded_bytes = base64.urlsafe_b64decode(padded)
-        return json.loads(decoded_bytes.decode("utf-8"))
+        payload_bytes = _b64url_decode(payload_b64)
+        payload = json.loads(payload_bytes.decode("utf-8"))
+    except Exception as e:
+        raise ValueError(f"Malformed JWT payload: {e}")
+
+    # Check expiration if present
+    if "exp" in payload and payload["exp"] < time.time():
+        raise ValueError("JWT token has expired")
+
+    return payload
+
+
+def decode_jwt_unverified_claims(token: str) -> Dict[str, Any]:
+    """Extracts payload claims from a JWT without cryptographic verification."""
+    try:
+        return decode_jwt_token(token, verify_signature=False)
     except Exception as e:
         logger.debug(f"Failed to decode JWT claims: {e}")
         return {}
@@ -48,13 +118,20 @@ def get_current_user_id(
     Falls back to a standard development UUID if no bearer token is present in dev mode.
     """
     if credentials and credentials.credentials:
-        claims = decode_jwt_unverified_claims(credentials.credentials)
-        sub = claims.get("sub")
-        if sub:
-            try:
+        try:
+            claims = decode_jwt_token(credentials.credentials, verify_signature=bool(settings.SUPABASE_JWT_SECRET))
+            sub = claims.get("sub")
+            if sub:
                 return uuid.UUID(str(sub))
-            except ValueError:
-                pass
+        except Exception as e:
+            logger.warning(f"Error extracting user from token: {e}")
+            # If in strict production, error out; in dev fallback, log and fall through
+            if settings.SUPABASE_JWT_SECRET:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail={"error": "Authentication Failed", "message": str(e)},
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
 
     # Allow development mode fallback
     return DEV_USER_ID
@@ -71,7 +148,15 @@ def require_authenticated_user_id(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    claims = decode_jwt_unverified_claims(credentials.credentials)
+    try:
+        claims = decode_jwt_token(credentials.credentials, verify_signature=bool(settings.SUPABASE_JWT_SECRET))
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": "Invalid Token", "message": str(ve)},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     sub = claims.get("sub")
     if not sub:
         raise HTTPException(
