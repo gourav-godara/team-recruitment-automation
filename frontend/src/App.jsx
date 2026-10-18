@@ -3,6 +3,7 @@ import LandingPage from './pages/LandingPage';
 import SchemaMapperPage from './pages/SchemaMapperPage';
 import DataQualityPage from './pages/DataQualityPage';
 import ScoringEnginePage from './pages/ScoringEnginePage';
+import RankedResultsPage from './pages/RankedResultsPage';
 
 export default function App() {
   return (
@@ -18,6 +19,9 @@ export default function App() {
           <Route path="/scoring-engine" element={<ScoringEnginePage />} />
           <Route path="/scoring" element={<ScoringEnginePage />} />
           <Route path="/weights" element={<ScoringEnginePage />} />
+          <Route path="/ranked-results" element={<RankedResultsPage />} />
+          <Route path="/ranked" element={<RankedResultsPage />} />
+          <Route path="/results" element={<RankedResultsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>

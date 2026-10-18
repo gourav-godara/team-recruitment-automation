@@ -6,7 +6,9 @@ export default function SchemaSidebar({ activeStage, onStageSelect }) {
 
   const currentStage =
     activeStage ||
-    (location.pathname.startsWith('/scoring') || location.pathname.startsWith('/weights')
+    (location.pathname.startsWith('/ranked') || location.pathname.startsWith('/results')
+      ? 'ranked-results'
+      : location.pathname.startsWith('/scoring') || location.pathname.startsWith('/weights')
       ? 'scoring-engine'
       : location.pathname.startsWith('/data-quality') || location.pathname.startsWith('/quality')
       ? 'data-quality'
@@ -92,6 +94,8 @@ export default function SchemaSidebar({ activeStage, onStageSelect }) {
                     navigate('/data-quality');
                   } else if (stage.id === 'scoring-engine') {
                     navigate('/scoring-engine');
+                  } else if (stage.id === 'ranked-results') {
+                    navigate('/ranked-results');
                   }
                   if (onStageSelect) {
                     onStageSelect(stage.id);

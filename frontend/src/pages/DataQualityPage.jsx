@@ -88,13 +88,10 @@ export default function DataQualityPage({ onNavigateHome, onProceedToScoring }) 
       navigate('/schema-mapper');
     } else if (stageId === 'data-quality') {
       navigate('/data-quality');
-    } else if (stageId === 'ranked-results' || stageId === 'export-audit') {
-      showNotification(`Navigating to ${stageId.replace('-', ' ').toUpperCase()} view...`);
-      if (onNavigateHome) {
-        setTimeout(() => onNavigateHome(stageId), 400);
-      } else {
-        setTimeout(() => navigate('/'), 400);
-      }
+    } else if (stageId === 'scoring-engine') {
+      navigate('/scoring-engine');
+    } else if (stageId === 'ranked-results') {
+      navigate('/ranked-results');
     } else {
       showNotification(`Stage ${stageId.toUpperCase()} selected.`);
     }
