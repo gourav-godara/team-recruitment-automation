@@ -1,0 +1,18 @@
+{
+  "engine_version": "0.1.0",
+  "dataset_hash": "743ee33a02daac780d2c2ea97192edeeb3605ea18436475aa9ecfb8d8c2678ec",
+  "config_hash": "2c5f8dda04b11ac19b9cc95bb328c85421a4b232ba030353eaf42de669333bf6",
+  "run_id": "run_feb6f14462ce3a83",
+  "top_x": 5,
+  "team_size_bounds": {
+    "min": 1,
+    "max": 5
+  },
+  "scoring_weights": {
+    "github_score": 0.4,
+    "experience_score": 0.35,
+    "skills_score": 0.25
+  },
+  "shortlisted_count": 5,
+  "total_teams_evaluated": 8
+}
