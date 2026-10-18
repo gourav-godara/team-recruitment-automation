@@ -91,6 +91,10 @@ export default function SchemaMapperPage({ onNavigateHome, onProceedToQualityChe
       setTimeout(() => {
         onProceedToQualityCheck();
       }, 900);
+    } else {
+      setTimeout(() => {
+        navigate('/data-quality');
+      }, 900);
     }
   };
 

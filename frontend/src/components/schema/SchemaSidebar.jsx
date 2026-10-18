@@ -6,7 +6,9 @@ export default function SchemaSidebar({ activeStage, onStageSelect }) {
 
   const currentStage =
     activeStage ||
-    (location.pathname.startsWith('/schema') || location.pathname.startsWith('/import')
+    (location.pathname.startsWith('/data-quality') || location.pathname.startsWith('/quality')
+      ? 'data-quality'
+      : location.pathname.startsWith('/schema') || location.pathname.startsWith('/import')
       ? 'import-schema'
       : 'import-schema');
   const stages = [
@@ -84,6 +86,8 @@ export default function SchemaSidebar({ activeStage, onStageSelect }) {
                 onClick={() => {
                   if (stage.id === 'import-schema') {
                     navigate('/schema-mapper');
+                  } else if (stage.id === 'data-quality') {
+                    navigate('/data-quality');
                   }
                   if (onStageSelect) {
                     onStageSelect(stage.id);
