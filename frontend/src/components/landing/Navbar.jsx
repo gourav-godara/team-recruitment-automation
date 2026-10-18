@@ -1,10 +1,13 @@
+import { Link } from 'react-router-dom';
+
 export default function Navbar({ onLoadDemo, onDropCsvClick }) {
+
   return (
     <header className="fixed top-3 left-0 right-0 z-50 px-4 max-w-7xl mx-auto">
       <div className="bg-white retro-border shadow-pop-lg rounded-2xl px-4 py-2.5 flex items-center justify-between gap-3">
         {/* Brand & Badges */}
         <div className="flex items-center gap-3 shrink-0">
-          <a className="flex items-center gap-2 group" href="#">
+          <Link className="flex items-center gap-2 group" to="/">
             <div className="w-10 h-10 rounded-xl bg-brand-yellow retro-border shadow-pop-sm flex items-center justify-center font-display font-extrabold text-xl group-hover:rotate-6 transition-transform">
               ⚡
             </div>
@@ -16,25 +19,28 @@ export default function Navbar({ onLoadDemo, onDropCsvClick }) {
                 HACKATHON JURY DECK
               </span>
             </div>
-          </a>
+          </Link>
           <div className="hidden md:flex items-center gap-1.5">
             <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-brand-green/30 text-emerald-800 retro-border shadow-pop-sm">
               ● v2.4 LIVE
             </span>
-            <span className="hidden lg:inline-flex px-2 py-0.5 rounded-full text-xs font-bold bg-brand-pink/20 text-rose-700 retro-border border-dashed">
-              NO MORE 3AM PANIC ✌️
-            </span>
+            <Link
+              to="/schema-mapper"
+              className="hidden lg:inline-flex px-2 py-0.5 rounded-full text-xs font-bold bg-secondary-fixed text-on-secondary-fixed retro-border shadow-pop-sm cursor-pointer hover:bg-secondary-fixed-dim"
+            >
+              STAGE 01 SCHEMA MAPPER →
+            </Link>
           </div>
         </div>
 
         {/* Center Links / Tabs */}
         <nav className="hidden xl:flex items-center gap-2 font-display font-semibold text-sm">
-          <a
-            className="px-3 py-1.5 rounded-xl bg-brand-blue text-white retro-border shadow-pop-sm transition-transform hover:-translate-y-0.5"
-            href="#dropzone-area"
+          <Link
+            to="/schema-mapper"
+            className="px-3 py-1.5 rounded-xl bg-brand-blue text-white retro-border shadow-pop-sm transition-transform hover:-translate-y-0.5 cursor-pointer font-bold"
           >
-            Ingest Arena
-          </a>
+            Ingest Arena (Stage 1)
+          </Link>
           <a
             className="px-3 py-1.5 rounded-xl hover:bg-brand-yellow retro-border border-transparent hover:border-brand-dark hover:shadow-pop-sm transition-all"
             href="#pipeline-stages"

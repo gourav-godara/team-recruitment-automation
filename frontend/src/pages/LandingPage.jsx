@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/landing/Navbar';
 import StatusTicker from '../components/landing/StatusTicker';
 import HeroSection from '../components/landing/HeroSection';
@@ -10,7 +11,8 @@ import Footer from '../components/landing/Footer';
 import AuditModal from '../components/landing/AuditModal';
 import { mockTeams } from '../data/mockTeams';
 
-export default function LandingPage() {
+export default function LandingPage({ onNavigateToSchema }) {
+  const navigate = useNavigate();
   const [teams, setTeams] = useState(mockTeams);
   const [selectedAuditTeam, setSelectedAuditTeam] = useState(null);
   const [isSimulating, setIsSimulating] = useState(false);
@@ -38,10 +40,10 @@ export default function LandingPage() {
   };
 
   const handleDropCsvClick = () => {
-    const dropzone = document.getElementById('dropzone-area');
-    if (dropzone) {
-      dropzone.scrollIntoView({ behavior: 'smooth' });
-      dropzone.click();
+    if (onNavigateToSchema) {
+      onNavigateToSchema();
+    } else {
+      navigate('/schema-mapper');
     }
   };
 
@@ -73,7 +75,11 @@ export default function LandingPage() {
       )}
 
       {/* Floating Sticky Top Navigation */}
-      <Navbar onLoadDemo={handleLoadDemo} onDropCsvClick={handleDropCsvClick} />
+      <Navbar
+        onLoadDemo={handleLoadDemo}
+        onDropCsvClick={handleDropCsvClick}
+        onNavigateToSchema={onNavigateToSchema}
+      />
 
       {/* Main Content */}
       <main className="w-full pt-24 bg-dot-pattern">
