@@ -6,7 +6,11 @@ export default function SchemaSidebar({ activeStage, onStageSelect }) {
 
   const currentStage =
     activeStage ||
-    (location.pathname.startsWith('/stability') || location.pathname.startsWith('/stress')
+    (location.pathname.startsWith('/export-audit') || location.pathname.startsWith('/audit') || location.pathname.startsWith('/export')
+      ? 'export-audit'
+      : location.pathname.startsWith('/team-compare') || location.pathname.startsWith('/compare')
+      ? 'team-compare'
+      : location.pathname.startsWith('/stability') || location.pathname.startsWith('/stress')
       ? 'stability-stress'
       : location.pathname.startsWith('/ranked') || location.pathname.startsWith('/results')
       ? 'ranked-results'
@@ -98,8 +102,12 @@ export default function SchemaSidebar({ activeStage, onStageSelect }) {
                     navigate('/scoring-engine');
                   } else if (stage.id === 'ranked-results') {
                     navigate('/ranked-results');
+                  } else if (stage.id === 'team-compare') {
+                    navigate('/team-compare');
                   } else if (stage.id === 'stability-stress') {
                     navigate('/stability-stress');
+                  } else if (stage.id === 'export-audit') {
+                    navigate('/export-audit');
                   }
                   if (onStageSelect) {
                     onStageSelect(stage.id);
