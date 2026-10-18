@@ -109,8 +109,20 @@ def adapt_member_data_to_engine_member(m: MemberData) -> Member:
     else:
         signals["email"] = SignalValue(value=None, status=SignalState.MISSING)
 
+    # 7.1 Declared Gender (Self-reported, never inferred)
+    raw_gender = getattr(m, "gender", None) or m.extra_data.get("declared_gender") or m.extra_data.get("gender")
+    if raw_gender is not None and str(raw_gender).strip():
+        clean_g = str(raw_gender).strip().lower()
+        signals["gender"] = SignalValue(value=clean_g, status=SignalState.PRESENT)
+        signals["declared_gender"] = SignalValue(value=clean_g, status=SignalState.PRESENT)
+    else:
+        signals["gender"] = SignalValue(value=None, status=SignalState.MISSING)
+        signals["declared_gender"] = SignalValue(value=None, status=SignalState.MISSING)
+
     # 8. Extra unmapped data (e.g., custom numeric scores or track metadata)
     for k, v in m.extra_data.items():
+        if k in signals and signals[k].status == SignalState.PRESENT:
+            continue
         clean_v, status = _clean_value(v)
         signals[k] = SignalValue(value=clean_v, status=status)
 

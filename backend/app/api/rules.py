@@ -239,3 +239,96 @@ def validate_rules(request: RuleValidationRequest) -> RuleValidationResponse:
         return RuleValidationResponse(valid=False, rules_count=len(request.rules), errors=errors)
 
     return RuleValidationResponse(valid=True, rules_count=len(request.rules), errors=[])
+
+
+class SelectionPreset(BaseModel):
+    id: str
+    name: str
+    description: str
+    weights: Dict[str, float]
+    criteria_aggregation: Dict[str, str]
+    rules: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+STRATEGY_PRESETS: List[SelectionPreset] = [
+    SelectionPreset(
+        id="balanced_hackathon",
+        name="Balanced Hackathon Standard",
+        description="Fair, well-rounded recruitment weighing GitHub, experience, and skills evenly with team-size normalization.",
+        weights={"github_score": 0.40, "experience_score": 0.35, "skills_score": 0.25},
+        criteria_aggregation={"github_score": "AVERAGE", "experience_score": "AVERAGE", "skills_score": "AVERAGE"},
+        rules=[
+            {
+                "id": "team_size",
+                "name": "Permitted Team Size (1-5)",
+                "type": "TEAM_SIZE_BETWEEN",
+                "min_value": 1.0,
+                "max_value": 5.0,
+                "severity": "mandatory",
+            }
+        ],
+    ),
+    SelectionPreset(
+        id="dev_heavy",
+        name="Developer & Code Heavy Track",
+        description="Prioritizes deep technical competence and open-source contributions. Rewards star coders with MAX aggregation.",
+        weights={"github_score": 0.55, "skills_score": 0.30, "experience_score": 0.15},
+        criteria_aggregation={"github_score": "MAX", "skills_score": "AVERAGE", "experience_score": "AVERAGE"},
+        rules=[],
+    ),
+    SelectionPreset(
+        id="experience_centric",
+        name="Senior & Enterprise Track",
+        description="Focuses primarily on work history, industry maturity, and domain experience.",
+        weights={"experience_score": 0.50, "github_score": 0.30, "skills_score": 0.20},
+        criteria_aggregation={"experience_score": "AVERAGE", "github_score": "AVERAGE", "skills_score": "AVERAGE"},
+        rules=[],
+    ),
+    SelectionPreset(
+        id="full_stack_challenge",
+        name="Full-Stack Web & Cloud Track",
+        description="Mandates comprehensive role coverage across frontend and backend engineering.",
+        weights={"github_score": 0.40, "experience_score": 0.35, "skills_score": 0.25},
+        criteria_aggregation={"github_score": "AVERAGE", "experience_score": "AVERAGE", "skills_score": "AVERAGE"},
+        rules=[
+            {
+                "id": "full_stack_coverage",
+                "name": "Full Stack Team Coverage",
+                "type": "REQUIRED_ROLE_COVERAGE",
+                "required_values": ["frontend", "backend"],
+                "severity": "mandatory",
+            }
+        ],
+    ),
+    SelectionPreset(
+        id="diversity_inclusive",
+        name="Diversity & Representation Track",
+        description="Balanced technical evaluation combined with an optional diversity rule (≥1 self-reported female member).",
+        weights={"github_score": 0.40, "experience_score": 0.35, "skills_score": 0.25},
+        criteria_aggregation={"github_score": "AVERAGE", "experience_score": "AVERAGE", "skills_score": "AVERAGE"},
+        rules=[
+            {
+                "id": "female_diversity",
+                "name": "At Least One Female Member",
+                "type": "COUNT_AT_LEAST",
+                "field": "declared_gender",
+                "target_value": "female",
+                "threshold": 1.0,
+                "severity": "mandatory",
+                "missing_data_action": "manual_review",
+            }
+        ],
+    ),
+]
+
+
+@router.get(
+    "/presets",
+    response_model=List[SelectionPreset],
+    status_code=status.HTTP_200_OK,
+    summary="Get pre-built recruitment strategy presets for 1-click configuration",
+)
+def get_strategy_presets() -> List[SelectionPreset]:
+    """Returns industry-standard evaluation presets (Balanced, Dev-Heavy, Full-Stack, Diversity)."""
+    return STRATEGY_PRESETS
+

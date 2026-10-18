@@ -5,9 +5,12 @@ Integrates with Sushmita's 'datasets', 'teams', 'members', and 'member_signals' 
 
 import json
 from typing import Any, Dict, List, Optional, Union
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from backend.app.core.database import get_db
+from backend.app.core.security import DEV_USER_ID, get_current_user_id
+from backend.app.models.entities import Campaign
 from backend.app.schemas.data_quality import DataQualityReport
 from backend.app.services.data_quality_service import DataQualityService
 from backend.app.services.import_repository import ImportRepository
@@ -29,8 +32,22 @@ async def upload_import(
     campaign_id: Optional[int] = Query(None, description="Optional associated campaign ID (integer)"),
     persist: bool = Query(True, description="Whether to persist valid teams to the database"),
     db: Any = Depends(get_db),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
 ) -> Dict[str, Any]:
     """Imports registration data from request body (supporting raw CSV text, JSON, or multipart files)."""
+    if campaign_id is not None:
+        campaign = db.query(Campaign).filter_by(id=campaign_id).first()
+        if not campaign:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "Campaign Not Found", "message": f"Campaign '{campaign_id}' does not exist."},
+            )
+        if current_user_id != DEV_USER_ID and campaign.owner_id != current_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"error": "Access Forbidden", "message": "You cannot upload datasets to another user's campaign."},
+            )
+
     raw_bytes = await request.body()
     if not raw_bytes or not raw_bytes.strip():
         raise HTTPException(
@@ -143,6 +160,7 @@ async def upload_import(
 def get_import(
     import_id: str,
     db: Any = Depends(get_db),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
 ) -> Dict[str, Any]:
     """Retrieves an imported dataset and its reconstructed teams by integer or string ID."""
     dataset = ImportRepository.get_dataset_by_id(db, import_id)
@@ -151,6 +169,14 @@ def get_import(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": "Dataset Not Found", "message": f"No dataset found with id '{import_id}'"},
         )
+
+    if dataset.campaign_id is not None:
+        campaign = db.query(Campaign).filter_by(id=dataset.campaign_id).first()
+        if campaign and current_user_id != DEV_USER_ID and campaign.owner_id != current_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"error": "Access Forbidden", "message": "You do not have permission to view this dataset."},
+            )
 
     teams = ImportRepository.get_dataset_teams(db, dataset.id)
 
@@ -177,6 +203,7 @@ def get_import(
 def get_import_quality_report(
     import_id: str,
     db: Any = Depends(get_db),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
 ) -> DataQualityReport:
     """Computes field completeness, missingness, duplicates, and URL validity for an imported dataset."""
     dataset = ImportRepository.get_dataset_by_id(db, import_id)
@@ -186,6 +213,29 @@ def get_import_quality_report(
             detail={"error": "Dataset Not Found", "message": f"No dataset found with id '{import_id}'"},
         )
 
+    if dataset.campaign_id is not None:
+        campaign = db.query(Campaign).filter_by(id=dataset.campaign_id).first()
+        if campaign and current_user_id != DEV_USER_ID and campaign.owner_id != current_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"error": "Access Forbidden", "message": "You do not have permission to view this dataset's quality report."},
+            )
+
     teams = ImportRepository.get_dataset_teams(db, dataset.id, only_valid=False)
     return DataQualityService.analyze_teams(teams=teams, dataset_id=str(dataset.id))
+
+
+@router.get(
+    "/{import_id}/quality",
+    response_model=DataQualityReport,
+    status_code=status.HTTP_200_OK,
+    include_in_schema=False,
+)
+def get_import_quality_alias(
+    import_id: str,
+    db: Any = Depends(get_db),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+) -> DataQualityReport:
+    """Convenience alias for /quality-report."""
+    return get_import_quality_report(import_id=import_id, db=db, current_user_id=current_user_id)
 

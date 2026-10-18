@@ -17,11 +17,22 @@ async def lifespan(app: FastAPI):
     yield
 
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(
     title="Team Recruitment Automation Tool",
     description="Configurable, explainable, and reproducible team shortlisting decision engine",
     version="2.0.0",
     lifespan=lifespan,
+)
+
+# Enable CORS for local frontend development (Next.js, Vite, React)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 

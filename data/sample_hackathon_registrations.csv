@@ -1,0 +1,26 @@
+team_id,team_name,name,email,gender,role,skills,experience_years,github_url,linkedin_url,portfolio_url
+T101,Binary Bosses,Alice Sharma,alice@example.com,Female,Full Stack Lead,"Python, React, Docker, FastAPI",3.5,https://github.com/alicesharma,https://linkedin.com/in/alicesharma,https://alice.dev
+T101,Binary Bosses,Bob Patel,bob@example.com,Male,Backend Developer,"Python, PostgreSQL, Redis",2.0,https://github.com/bobpatel,https://linkedin.com/in/bobpatel,
+T101,Binary Bosses,Carol Lee,carol@example.com,Female,UI/UX Designer,"Figma, React, TailwindCSS, CSS",1.5,https://github.com/carollee,https://linkedin.com/in/carollee,https://carol.design
+T102,Neural Ninjas,David Kumar,david@example.com,Male,ML Engineer,"Python, PyTorch, TensorFlow, Scikit-learn",3.0,https://github.com/davidk,https://linkedin.com/in/davidk,
+T102,Neural Ninjas,Emma Watson,emma@example.com,Female,Data Engineer,"Python, SQL, Apache Kafka, Spark",2.5,https://github.com/emmaw,https://linkedin.com/in/emmaw,https://emma.ai
+T102,Neural Ninjas,Farhan Ali,farhan@example.com,Male,Frontend Developer,"React, Next.js, TypeScript",1.0,https://github.com/farhana,https://linkedin.com/in/farhana,
+T103,Byte Builders,Girish Verma,girish@example.com,Male,Cloud Architect,"Go, Kubernetes, AWS, Terraform",4.0,https://github.com/girishv,https://linkedin.com/in/girishv,https://girish.cloud
+T103,Byte Builders,Harsh Gupta,harsh@example.com,Male,Backend Developer,"Java, Spring Boot, MySQL",2.0,https://github.com/harshg,https://linkedin.com/in/harshg,
+T103,Byte Builders,Ishan Roy,ishan@example.com,Male,DevOps Specialist,"Docker, Linux, Bash, CI/CD",1.5,https://github.com/ishanr,https://linkedin.com/in/ishanr,
+T104,Pixel Pioneers,Jaya Menon,jaya@example.com,Female,Frontend Lead,"React, Vue.js, JavaScript, SASS",2.5,https://github.com/jayam,https://linkedin.com/in/jayam,https://jaya.dev
+T104,Pixel Pioneers,Karan Johar,karan@example.com,Male,UI Designer,"Figma, Adobe XD, HTML, CSS",1.0,https://github.com/karanj,https://linkedin.com/in/karanj,
+T105,Cyber Sentinels,Lavanya Nair,lavanya@example.com,Female,Security Analyst,"Python, Network Security, Cryptography",3.0,https://github.com/lavanyan,https://linkedin.com/in/lavanyan,
+T105,Cyber Sentinels,Manish Rao,manish@example.com,Male,Systems Programmer,"C++, Rust, Linux Kernel",3.5,https://github.com/manishr,https://linkedin.com/in/manishr,
+T105,Cyber Sentinels,Neha Singh,neha@example.com,Female,QA & Automation,"Python, Selenium, PyTest, Docker",2.0,https://github.com/nehas,https://linkedin.com/in/nehas,
+T105,Cyber Sentinels,Omkar Dixit,omkar@example.com,Male,DevSecOps,"Docker, OWASP, Kubernetes",1.5,https://github.com/omkard,https://linkedin.com/in/omkard,
+T106,Solo Hacker,Pranav Dave,pranav@example.com,Male,Full Stack Developer,"JavaScript, Node.js, Express, MongoDB",2.0,https://github.com/pranavd,https://linkedin.com/in/pranavd,
+T107,Mega Syndicate,Queen Liu,queen@example.com,Female,Team Lead,"Python, Agile, Product Management",3.0,https://github.com/queenl,https://linkedin.com/in/queenl,
+T107,Mega Syndicate,Ravi Teja,ravi@example.com,Male,Backend Developer,"Go, gRPC, PostgreSQL",2.0,https://github.com/ravit,https://linkedin.com/in/ravit,
+T107,Mega Syndicate,Sneha Rao,sneha@example.com,Female,Frontend Developer,"React, Redux, CSS",1.5,https://github.com/snehar,https://linkedin.com/in/snehar,
+T107,Mega Syndicate,Tarun Mehra,tarun@example.com,Male,Mobile Developer,"Flutter, Dart, Firebase",1.0,https://github.com/tarunm,https://linkedin.com/in/tarunm,
+T107,Mega Syndicate,Umesh Jain,umesh@example.com,Male,Database Administrator,"PostgreSQL, Redis, MySQL",2.0,https://github.com/umeshj,https://linkedin.com/in/umeshj,
+T107,Mega Syndicate,Varun Pillai,varun@example.com,Male,Intern Developer,"HTML, CSS, JavaScript",0.0,https://github.com/varunp,https://linkedin.com/in/varunp,
+T108,Code Catalysts,Waseem Khan,waseem@example.com,Male,Backend Lead,"Python, Django, AWS",4.0,https://github.com/waseemk,https://linkedin.com/in/waseemk,https://waseem.tech
+T108,Code Catalysts,Xavier Dias,xavier@example.com,Male,Mobile Developer,"React Native, TypeScript",2.5,https://github.com/xavierd,https://linkedin.com/in/xavierd,
+T108,Code Catalysts,Yashvi Trivedi,yashvi@example.com,Female,Cloud & DevOps,"AWS, Terraform, Docker, Kubernetes",2.0,https://github.com/yashvit,https://linkedin.com/in/yashvit,
