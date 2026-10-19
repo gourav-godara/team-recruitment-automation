@@ -46,10 +46,37 @@ export default function TeamInspectionDrawer({
               </span>
             </div>
             <p className="font-body-sm text-body-sm text-on-surface-variant font-mono mt-0.5">
-              TEAM ID: {team.external_id} • {team.description}
+              TEAM ID: {team.external_id} • {team.description || `Team Size: ${team.team_size || 3}`}
             </p>
           </div>
         </div>
+
+        {/* Red Alert: Disqualification Reason */}
+        {team.disqualification_reason && (
+          <div className="p-3 bg-rose-50 border-2 border-rose-600 rounded-xl text-rose-900 shadow-[2px_2px_0px_#0f172a] flex items-start gap-2.5">
+            <span className="material-symbols-outlined text-rose-600 font-bold text-xl shrink-0 mt-0.5">
+              gpp_bad
+            </span>
+            <div>
+              <span className="font-bold text-xs uppercase tracking-wide block text-rose-700">
+                Disqualification Reason
+              </span>
+              <p className="text-xs font-semibold leading-relaxed mt-0.5">
+                {team.disqualification_reason}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Explanation Summary */}
+        {team.explanation && (
+          <div className="p-3 bg-surface-container-low border-2 border-[#0f172a] rounded-xl text-on-surface shadow-[2px_2px_0px_#0f172a] text-xs">
+            <span className="font-bold uppercase tracking-wider text-[11px] text-on-surface-variant block mb-1">
+              Decision Explanation
+            </span>
+            <p className="font-medium leading-relaxed">{team.explanation}</p>
+          </div>
+        )}
 
         {/* Big Score Panel */}
         <div className="bg-surface-container p-space-md rounded-xl border-2 border-[#0f172a] shadow-[3px_3px_0px_#0f172a] flex items-center justify-between">
@@ -180,17 +207,27 @@ export default function TeamInspectionDrawer({
               {team.rules_passed} / {team.rules_total} PASSED
             </span>
           </div>
-          <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+          <div className="flex flex-col gap-2 text-xs font-mono">
             {team.rules.map((rule, idx) => (
-              <div key={idx} className="flex items-center gap-1.5 text-on-surface">
-                <span
-                  className={`material-symbols-outlined text-sm font-bold ${
-                    rule.passed ? 'text-[#10b981]' : 'text-error'
-                  }`}
-                >
-                  {rule.passed ? 'check_circle' : 'cancel'}
-                </span>
-                <span className="truncate">{rule.name}</span>
+              <div key={idx} className="flex flex-col gap-0.5 text-on-surface bg-surface-container-lowest p-2 rounded-lg border border-[#0f172a]/20">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold truncate">{rule.name}</span>
+                  <span
+                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold text-[10px] ${
+                      rule.passed ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-xs">
+                      {rule.passed ? 'check_circle' : 'cancel'}
+                    </span>
+                    <span>{rule.passed ? 'PASS' : 'FAIL'}</span>
+                  </span>
+                </div>
+                {rule.reason && !rule.passed && (
+                  <p className="text-[11px] text-rose-700 font-sans mt-0.5 font-semibold leading-tight">
+                    {rule.reason}
+                  </p>
+                )}
               </div>
             ))}
           </div>

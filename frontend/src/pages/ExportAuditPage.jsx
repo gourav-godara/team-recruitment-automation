@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SchemaHeader from '../components/schema/SchemaHeader';
 import SchemaSidebar from '../components/schema/SchemaSidebar';
@@ -18,9 +18,12 @@ import {
   generateAuditManifestJson,
   generateDeliberationCsv,
 } from '../data/mockAudit';
+import { useApp } from '../context/AppContext';
+import { getRun, downloadCsv } from '../api/client';
 
 export default function ExportAuditPage({ onNavigateHome }) {
   const navigate = useNavigate();
+  const { campaignId, datasetId, runId, navigateWithState } = useApp();
 
   const [activeStage, setActiveStage] = useState('export-audit');
   const [toast, setToast] = useState(null);
@@ -28,10 +31,41 @@ export default function ExportAuditPage({ onNavigateHome }) {
   const [showManifestModal, setShowManifestModal] = useState(false);
   const [showStageModal, setShowStageModal] = useState(false);
 
+  // Live Run Data
+  const [runData, setRunData] = useState(null);
+  const [loadingRun, setLoadingRun] = useState(false);
+  const [runError, setRunError] = useState(null);
+
   const showNotification = (msg) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3200);
   };
+
+  // Fetch saved run data on mount if runId present
+  useEffect(() => {
+    if (!runId) return;
+
+    let isMounted = true;
+    setLoadingRun(true);
+    setRunError(null);
+
+    getRun(runId)
+      .then((data) => {
+        if (!isMounted) return;
+        setRunData(data);
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        setRunError(err.message || 'Failed to load run details.');
+      })
+      .finally(() => {
+        if (isMounted) setLoadingRun(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [runId]);
 
   // 1. Copy verification link
   const handleCopyVerificationLink = () => {
@@ -45,11 +79,22 @@ export default function ExportAuditPage({ onNavigateHome }) {
     }
   };
 
-  // 2. Download Audit Package (.zip bundle simulation)
-  const handleDownloadPackage = () => {
-    showNotification('📦 Assembling full cryptographic bundle (Manifest, CSVs, Signatures, IPFS snapshot)...');
+  // 2. Download Audit Package (.zip bundle)
+  const handleDownloadPackage = async () => {
+    if (runId) {
+      showNotification('📦 Assembling full cryptographic bundle (.zip) via backend export engine...');
+      try {
+        await downloadCsv(runId, `ShortlistIQ_Audit_Package_Run_${runId}.zip`, 'bundle');
+        showNotification(`✅ Downloaded: ShortlistIQ_Audit_Package_Run_${runId}.zip`);
+        return;
+      } catch (err) {
+        console.warn('Bundle ZIP export failed, falling back to JSON manifest:', err);
+      }
+    }
+
+    // Fallback: Trigger download of full JSON manifest
+    showNotification('📦 Assembling manifest bundle (Fallback JSON)...');
     setTimeout(() => {
-      // Trigger download of full JSON manifest and CSV roster
       const manifestData = generateAuditManifestJson();
       const blob = new Blob([manifestData], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -59,11 +104,23 @@ export default function ExportAuditPage({ onNavigateHome }) {
       a.click();
       URL.revokeObjectURL(url);
       showNotification('✅ Downloaded: ShortlistIQ_Audit_Package_2025.zip (.json manifest bundle)');
-    }, 700);
+    }, 500);
   };
 
   // 3. Download Finalist CSV
-  const handleDownloadFinalistCsv = () => {
+  const handleDownloadFinalistCsv = async () => {
+    if (runId) {
+      showNotification('📥 Fetching Top 40 consensus CSV from backend export engine...');
+      try {
+        await downloadCsv(runId, `Finalist_Roster_Top40_Run_${runId}.csv`, 'shortlist');
+        showNotification(`📥 Downloaded: Finalist_Roster_Top40_Run_${runId}.csv (live API export)`);
+        return;
+      } catch (err) {
+        console.warn('Shortlist CSV export failed, falling back to local generator:', err);
+      }
+    }
+
+    // Fallback: client generated CSV
     const csvData = generateFinalistCsv();
     const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -76,7 +133,17 @@ export default function ExportAuditPage({ onNavigateHome }) {
   };
 
   // 4. Download JSON Manifest
-  const handleDownloadManifestJson = () => {
+  const handleDownloadManifestJson = async () => {
+    if (runId) {
+      try {
+        await downloadCsv(runId, `Audit_Config_Manifest_Run_${runId}.json`, 'config');
+        showNotification(`📥 Downloaded: Audit_Config_Manifest_Run_${runId}.json (live configuration)`);
+        return;
+      } catch (err) {
+        console.warn('Config JSON export failed, falling back to local manifest:', err);
+      }
+    }
+
     const jsonData = generateAuditManifestJson();
     const blob = new Blob([jsonData], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -166,17 +233,17 @@ Signed by all 4 Track Jury Leads. Verified and Sealed.
   const handleStageSelect = (stageId) => {
     setActiveStage(stageId);
     if (stageId === 'import-schema') {
-      navigate('/schema-mapper');
+      navigateWithState('/schema-mapper');
     } else if (stageId === 'data-quality') {
-      navigate('/data-quality');
+      navigateWithState('/data-quality');
     } else if (stageId === 'scoring-engine') {
-      navigate('/scoring-engine');
+      navigateWithState('/scoring-engine');
     } else if (stageId === 'ranked-results') {
-      navigate('/ranked-results');
+      navigateWithState('/ranked-results');
     } else if (stageId === 'team-compare') {
-      navigate('/team-compare');
+      navigateWithState('/team-compare');
     } else if (stageId === 'stability-stress') {
-      navigate('/stability-stress');
+      navigateWithState('/stability-stress');
     } else if (stageId === 'export-audit') {
       showNotification('Already on Stage 07: Export & Cryptographic Audit.');
     } else {
@@ -221,16 +288,79 @@ Signed by all 4 Track Jury Leads. Verified and Sealed.
             <AuditHeaderBanner
               onCopyLink={handleCopyVerificationLink}
               onDownloadPackage={handleDownloadPackage}
-              blockNumber={mockAuditLedger.block_number}
+              blockNumber={runId ? `RUN-${runId}` : mockAuditLedger.block_number}
             />
+
+            {/* Active Run Status Banner */}
+            {runId ? (
+              <div className="mb-space-md p-3 rounded-xl bg-primary-container/10 border-2 border-primary-container text-on-surface flex items-center justify-between flex-wrap gap-2 shadow-[2px_2px_0px_#0f172a]">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary text-xl font-bold">verified</span>
+                  <span className="text-sm font-semibold">
+                    {loadingRun ? (
+                      <span>Loading cryptographic ledger for <strong>Run #{runId}</strong>...</span>
+                    ) : runData ? (
+                      <span>
+                        Sealed <strong>Run #{runId}</strong>: {runData.eligible_teams ?? (runData.results?.length || 0)} eligible candidates evaluated. Export engines connected.
+                      </span>
+                    ) : (
+                      <span>Exporting deterministic ledger for <strong>Run #{runId}</strong>.</span>
+                    )}
+                  </span>
+                </div>
+                <span className="px-2.5 py-0.5 rounded-full bg-primary text-white text-xs font-mono font-bold">
+                  AUDIT LEDGER LIVE
+                </span>
+              </div>
+            ) : (
+              <div className="mb-space-md p-3 rounded-xl bg-surface-container-high border-2 border-[#0f172a] text-on-surface flex items-center justify-between flex-wrap gap-2 shadow-[2px_2px_0px_#0f172a]">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-outline-variant text-xl">info</span>
+                  <span className="text-sm text-on-surface-variant font-medium">
+                    No active evaluation run connected. Exports will download simulated consensus audit bundles.
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {runError && (
+              <div className="mb-space-md p-3 rounded-xl bg-tertiary-container/20 border-2 border-tertiary text-on-surface flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-tertiary text-xl font-bold">warning</span>
+                  <span className="text-sm font-bold text-tertiary">
+                    Notice: {runError}. Using local fallback consensus records.
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* Bento KPI Top Cards */}
             <AuditKpiCards
               ledgerStatus="SEALED"
               ledgerBadge="SHA-256 Valid"
-              shortlistCount={mockAuditLedger.shortlist_count}
-              shortlistQuotaPct={mockAuditLedger.shortlist_percentage}
-              totalSubmissions={mockAuditLedger.total_teams}
+              shortlistCount={
+                runData && runData.config && runData.config.top_x !== undefined
+                  ? runData.config.top_x
+                  : mockAuditLedger.shortlist_count
+              }
+              shortlistQuotaPct={
+                runData
+                  ? (
+                      ((runData.config?.top_x || 40) /
+                        (runData.results?.length ||
+                          (runData.eligible_teams || 0) + (runData.disqualified_teams || 0) ||
+                          mockAuditLedger.total_teams)) *
+                      100
+                    ).toFixed(1)
+                  : mockAuditLedger.shortlist_percentage
+              }
+              totalSubmissions={
+                runData
+                  ? runData.results?.length ||
+                    (runData.eligible_teams || 0) + (runData.disqualified_teams || 0) ||
+                    mockAuditLedger.total_teams
+                  : mockAuditLedger.total_teams
+              }
               quorumLeads={mockAuditLedger.quorum_leads}
               quorumSignedPct={mockAuditLedger.quorum_percent}
               stabilityConfidence={mockAuditLedger.stability_confidence}

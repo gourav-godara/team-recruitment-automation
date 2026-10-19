@@ -11,9 +11,11 @@ import CandidateSwapModal from '../components/compare/CandidateSwapModal';
 import ExportDossierModal from '../components/compare/ExportDossierModal';
 import { mockDatasetInfo } from '../data/mockSchema';
 import { mockDefaultPair, mockEvaluatorsList } from '../data/mockCompare';
+import { useApp } from '../context/AppContext';
 
 export default function TeamComparePage({ onNavigateHome, onProceedToStage06 }) {
   const navigate = useNavigate();
+  const { campaignId, datasetId, runId, navigateWithState } = useApp();
 
   const [teamA, setTeamA] = useState(mockDefaultPair.teamA);
   const [teamB, setTeamB] = useState(mockDefaultPair.teamB);
@@ -120,7 +122,7 @@ export default function TeamComparePage({ onNavigateHome, onProceedToStage06 }) 
       if (onProceedToStage06) {
         onProceedToStage06();
       } else {
-        navigate('/stability-stress');
+        navigateWithState('/stability-stress');
       }
     }, 600);
   };
@@ -129,19 +131,19 @@ export default function TeamComparePage({ onNavigateHome, onProceedToStage06 }) 
   const handleStageSelect = (stageId) => {
     setActiveStage(stageId);
     if (stageId === 'import-schema') {
-      navigate('/schema-mapper');
+      navigateWithState('/schema-mapper');
     } else if (stageId === 'data-quality') {
-      navigate('/data-quality');
+      navigateWithState('/data-quality');
     } else if (stageId === 'scoring-engine') {
-      navigate('/scoring-engine');
+      navigateWithState('/scoring-engine');
     } else if (stageId === 'ranked-results') {
-      navigate('/ranked-results');
+      navigateWithState('/ranked-results');
     } else if (stageId === 'team-compare') {
-      navigate('/team-compare');
+      navigateWithState('/team-compare');
     } else if (stageId === 'stability-stress') {
-      navigate('/stability-stress');
+      navigateWithState('/stability-stress');
     } else if (stageId === 'export-audit') {
-      navigate('/export-audit');
+      navigateWithState('/export-audit');
     } else {
       showNotification(`Stage ${stageId.toUpperCase()} selected.`);
     }

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SchemaHeader from '../components/schema/SchemaHeader';
 import SchemaSidebar from '../components/schema/SchemaSidebar';
@@ -16,9 +16,12 @@ import {
   mockBubbleTeams,
   calculateMonteCarloPerturbations,
 } from '../data/mockStability';
+import { useApp } from '../context/AppContext';
+import { runSensitivity } from '../api/client';
 
 export default function StabilityStressPage({ onNavigateHome, onProceedToAudit }) {
   const navigate = useNavigate();
+  const { campaignId, datasetId, runId, navigateWithState } = useApp();
 
   const [weights, setWeights] = useState({
     tech: 35,
@@ -29,6 +32,8 @@ export default function StabilityStressPage({ onNavigateHome, onProceedToAudit }
   const [activePreset, setActivePreset] = useState('baseline');
   const [teams, setTeams] = useState(mockBubbleTeams);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [simError, setSimError] = useState(null);
+  const [sensitivityResult, setSensitivityResult] = useState(null);
   const [activeStage, setActiveStage] = useState('stability-stress');
 
   // Modals
@@ -41,7 +46,7 @@ export default function StabilityStressPage({ onNavigateHome, onProceedToAudit }
     setTimeout(() => setToast(null), 3500);
   };
 
-  // Recalculate perturbation results
+  // Recalculate perturbation results (fallback / local heuristic)
   const perturbationResult = useMemo(() => {
     return calculateMonteCarloPerturbations(weights);
   }, [weights]);
@@ -65,13 +70,90 @@ export default function StabilityStressPage({ onNavigateHome, onProceedToAudit }
     }
   };
 
-  // Run 10k Monte Carlo cycles
-  const handleRunSimulation = () => {
+  // Run simulation against backend if runId exists, or run local Monte Carlo
+  const handleRunSimulation = async () => {
     setIsSimulating(true);
-    setTimeout(() => {
-      setIsSimulating(false);
-      showNotification('🎲 Monte Carlo sweep completed: 10,000 iterations processed in 680ms.');
-    }, 700);
+    setSimError(null);
+
+    if (runId) {
+      try {
+        const total = (weights.tech + weights.github + weights.track + weights.velocity) || 100;
+        const wTech = weights.tech / total;
+        const wGithub = weights.github / total;
+        const wTrack = weights.track / total;
+        const wVel = (total - weights.tech - weights.github - weights.track) / total;
+
+        const newConfig = {
+          top_x: 40,
+          weights: {
+            experience_years: Number(wTech.toFixed(4)),
+            github_composite_score: Number(wGithub.toFixed(4)),
+            presentation: Number(wTrack.toFixed(4)),
+            skills: Number(wVel.toFixed(4)),
+          },
+        };
+
+        const res = await runSensitivity(runId, newConfig);
+        setSensitivityResult(res);
+
+        if (res && res.team_deltas && res.team_deltas.length > 0) {
+          // Map backend deltas into volatility table format
+          const mappedTeams = res.team_deltas.map((d) => ({
+            team_id: d.team_id,
+            name: d.team_name || d.team_id,
+            base_rank: d.base_rank ?? 999,
+            new_rank: d.new_rank,
+            range: d.base_rank && d.new_rank
+              ? `#${Math.min(d.base_rank, d.new_rank)} - #${Math.max(d.base_rank, d.new_rank)}`
+              : `#${d.base_rank || '?'}`,
+            volatility_sigma: d.rank_delta !== null && d.rank_delta !== undefined
+              ? `${d.rank_delta > 0 ? '+' : ''}${d.rank_delta} ranks`
+              : '±0 ranks',
+            base_stat: d.base_rank && d.base_rank <= 40 ? 'IN' : 'OUT',
+            survival_rate: d.new_rank && d.new_rank <= 40 ? 100 : 0,
+            perturbed_profile: d.status_change === 'NEWLY_SHORTLISTED'
+              ? 'Promoted into Shortlist'
+              : d.status_change === 'DROPPED_FROM_SHORTLIST'
+              ? 'Dropped below Cutoff'
+              : d.score_delta !== null && d.score_delta !== undefined
+              ? `Score Delta: ${d.score_delta > 0 ? '+' : ''}${d.score_delta.toFixed(2)} pts`
+              : 'Stable boundary rank',
+            risk_level: d.status_change === 'NEWLY_SHORTLISTED'
+              ? 'PROMOTED'
+              : d.status_change === 'DROPPED_FROM_SHORTLIST'
+              ? 'CRITICAL (DROPPED)'
+              : Math.abs(d.rank_delta || 0) > 3
+              ? 'HIGH VOLATILITY'
+              : 'SAFE',
+            risk_type: d.status_change === 'DROPPED_FROM_SHORTLIST'
+              ? 'bubble'
+              : d.status_change === 'NEWLY_SHORTLISTED'
+              ? 'contender'
+              : Math.abs(d.rank_delta || 0) > 2
+              ? 'fragile'
+              : 'safe',
+          }));
+
+          // Sort by base_rank so cutoff horizon displays cleanly
+          mappedTeams.sort((a, b) => a.base_rank - b.base_rank);
+          setTeams(mappedTeams);
+        }
+
+        showNotification(
+          `⚡ Sensitivity preview evaluated: ${res.turnover_count ?? 0} boundary swaps (${res.turnover_rate?.toFixed(1) ?? 0}% turnover).`
+        );
+      } catch (err) {
+        setSimError(err.message || 'Sensitivity preview simulation failed.');
+        showNotification(`⚠️ Simulation error: ${err.message}`);
+      } finally {
+        setIsSimulating(false);
+      }
+    } else {
+      setTimeout(() => {
+        setIsSimulating(false);
+        showNotification('🎲 Monte Carlo sweep completed: 10,000 iterations processed in 680ms.');
+      }, 700);
+    }
   };
 
   // Download Sensitivity CSV
@@ -90,7 +172,7 @@ export default function StabilityStressPage({ onNavigateHome, onProceedToAudit }
       `"${t.name}"`,
       t.base_rank,
       `"${t.range}"`,
-      t.volatility_sigma,
+      `"${t.volatility_sigma}"`,
       `"${t.base_stat}"`,
       t.survival_rate,
       `"${t.risk_level}"`,
@@ -105,7 +187,7 @@ export default function StabilityStressPage({ onNavigateHome, onProceedToAudit }
     a.download = `monte_carlo_sensitivity_matrix_${Date.now()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    showNotification('📥 Sensitivity Matrix CSV exported with 10,000 perturbation summary rows.');
+    showNotification('📥 Sensitivity Matrix CSV exported with perturbation summary rows.');
   };
 
   // Proceed to Audit Export
@@ -115,7 +197,7 @@ export default function StabilityStressPage({ onNavigateHome, onProceedToAudit }
       if (onProceedToAudit) {
         onProceedToAudit();
       } else {
-        navigate('/export-audit');
+        navigateWithState('/export-audit');
       }
     }, 600);
   };
@@ -149,21 +231,23 @@ export default function StabilityStressPage({ onNavigateHome, onProceedToAudit }
   const handleStageSelect = (stageId) => {
     setActiveStage(stageId);
     if (stageId === 'import-schema') {
-      navigate('/schema-mapper');
+      navigateWithState('/schema-mapper');
     } else if (stageId === 'data-quality') {
-      navigate('/data-quality');
+      navigateWithState('/data-quality');
     } else if (stageId === 'scoring-engine') {
-      navigate('/scoring-engine');
+      navigateWithState('/scoring-engine');
     } else if (stageId === 'ranked-results') {
-      navigate('/ranked-results');
+      navigateWithState('/ranked-results');
+    } else if (stageId === 'team-compare') {
+      navigateWithState('/team-compare');
     } else if (stageId === 'stability-stress') {
-      navigate('/stability-stress');
+      navigateWithState('/stability-stress');
     } else if (stageId === 'export-audit') {
       showNotification('Stage 07: Export & Audit preview initialized.');
       if (onProceedToAudit) {
         setTimeout(onProceedToAudit, 400);
       } else {
-        setTimeout(() => navigate('/export-audit'), 400);
+        setTimeout(() => navigateWithState('/export-audit'), 400);
       }
     } else {
       showNotification(`Stage ${stageId.toUpperCase()} selected.`);
@@ -207,13 +291,83 @@ export default function StabilityStressPage({ onNavigateHome, onProceedToAudit }
               onProceedAudit={handleProceedAudit}
             />
 
+            {/* Run Connection Banner */}
+            {runId ? (
+              <div className="mb-space-md p-3 rounded-xl bg-primary-container/10 border-2 border-primary-container text-on-surface flex items-center justify-between flex-wrap gap-2 shadow-[2px_2px_0px_#0f172a]">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary text-xl font-bold">bolt</span>
+                  <span className="text-sm font-semibold">
+                    Linked to <strong>Evaluation Run #{runId}</strong>: Perturbation cycles recalculate candidate scores against live data.
+                  </span>
+                </div>
+                <span className="px-2.5 py-0.5 rounded-full bg-primary text-white text-xs font-mono font-bold">
+                  LIVE RUN CONNECTED
+                </span>
+              </div>
+            ) : (
+              <div className="mb-space-md p-3 rounded-xl bg-surface-container-high border-2 border-[#0f172a] text-on-surface flex items-center justify-between flex-wrap gap-2 shadow-[2px_2px_0px_#0f172a]">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-outline-variant text-xl">info</span>
+                  <span className="text-sm text-on-surface-variant font-medium">
+                    No active evaluation run linked. Showing baseline simulation models. Complete Stage 03 to test live candidate scores.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigateWithState('/scoring-engine')}
+                  className="px-2.5 py-0.5 rounded-full bg-secondary-fixed text-on-secondary-fixed text-xs font-bold border border-[#0f172a] hover:bg-secondary-fixed-dim"
+                >
+                  Go to Scoring Engine
+                </button>
+              </div>
+            )}
+
+            {/* Simulation Error Alert */}
+            {simError && (
+              <div className="mb-space-md p-3 rounded-xl bg-tertiary-container/20 border-2 border-tertiary text-on-surface flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-tertiary text-xl font-bold">error</span>
+                  <span className="text-sm font-bold text-tertiary">
+                    Sensitivity Simulation Error: {simError}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRunSimulation}
+                  className="px-3 py-1 rounded-lg bg-surface-container-lowest border border-[#0f172a] text-xs font-bold hover:bg-white"
+                >
+                  Retry Simulation
+                </button>
+              </div>
+            )}
+
             {/* Top Metric Bento Cards */}
             <StabilityMetricsBento
-              stabilityIndex={perturbationResult.stabilityIndex}
-              successfulRuns={perturbationResult.successfulRuns}
-              vulnerableCount={mockStabilityMetrics.vulnerable_count}
-              safeAnchorsCount={mockStabilityMetrics.safe_anchors_count}
-              maxDisplacement={mockStabilityMetrics.max_displacement}
+              stabilityIndex={
+                sensitivityResult && sensitivityResult.turnover_rate !== undefined
+                  ? Number((100 - sensitivityResult.turnover_rate).toFixed(1))
+                  : perturbationResult.stabilityIndex
+              }
+              successfulRuns={
+                sensitivityResult && sensitivityResult.turnover_rate !== undefined
+                  ? Math.round((1 - sensitivityResult.turnover_rate / 100) * 10000)
+                  : perturbationResult.successfulRuns
+              }
+              vulnerableCount={
+                sensitivityResult && sensitivityResult.turnover_count !== undefined
+                  ? sensitivityResult.turnover_count
+                  : mockStabilityMetrics.vulnerable_count
+              }
+              safeAnchorsCount={
+                sensitivityResult && sensitivityResult.shortlist_size !== undefined
+                  ? Math.max(0, sensitivityResult.shortlist_size - (sensitivityResult.turnover_count || 0))
+                  : mockStabilityMetrics.safe_anchors_count
+              }
+              maxDisplacement={
+                sensitivityResult && sensitivityResult.team_deltas
+                  ? sensitivityResult.team_deltas.reduce((m, d) => Math.max(m, Math.abs(d.rank_delta || 0)), 0)
+                  : mockStabilityMetrics.max_displacement
+              }
             />
 
             {/* Main Split Console: Controller (Left 5) + Volatility Matrix (Right 7) */}
@@ -243,7 +397,7 @@ export default function StabilityStressPage({ onNavigateHome, onProceedToAudit }
             <TieBreakerAdvisoryCard
               onOpenCompare={() => {
                 showNotification('Opening Head-to-Head Compare view for NovaPulse vs SynapseDB...');
-                navigate('/team-compare');
+                navigateWithState('/team-compare');
               }}
               onCallTieBreaker={() => setShowTieBreakerModal(true)}
               isInverted={perturbationResult.isInverted}

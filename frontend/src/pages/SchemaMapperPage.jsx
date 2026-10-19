@@ -8,15 +8,20 @@ import SchemaFooterActions from '../components/schema/SchemaFooterActions';
 import QuickPreviewModal from '../components/schema/QuickPreviewModal';
 import ReuploadModal from '../components/schema/ReuploadModal';
 import { mockDatasetInfo, initialSchemaFields } from '../data/mockSchema';
+import { uploadImport } from '../api/client';
+import { useApp } from '../context/AppContext';
 
 export default function SchemaMapperPage({ onNavigateHome, onProceedToQualityCheck }) {
   const navigate = useNavigate();
+  const { campaignId, datasetId, setDatasetId, navigateWithState } = useApp();
   const [datasetInfo, setDatasetInfo] = useState(mockDatasetInfo);
   const [fields, setFields] = useState(initialSchemaFields);
   const [granularity, setGranularity] = useState('team'); // 'team' | 'member'
   const [activeStage, setActiveStage] = useState('import-schema');
   const [showQuickPreview, setShowQuickPreview] = useState(false);
   const [showReupload, setShowReupload] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
   const [toast, setToast] = useState(null);
 
   const showNotification = (msg) => {
@@ -69,14 +74,34 @@ export default function SchemaMapperPage({ onNavigateHome, onProceedToQualityChe
     showNotification('✨ Auto-aligned all schema columns using semantic token inference!');
   };
 
-  // Handle re-upload file
-  const handleFileSelect = (file) => {
-    setDatasetInfo((prev) => ({
-      ...prev,
-      name: file.name,
-      file_size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-    }));
-    showNotification(`✓ File ${file.name} ingested successfully! Re-parsing schema keys.`);
+  // Handle re-upload file with backend API
+  const handleFileSelect = async (file) => {
+    setIsUploading(true);
+    setUploadError(null);
+    showNotification(`⚡ Ingesting ${file.name} into backend engine...`);
+    try {
+      const result = await uploadImport(file, file.name, campaignId);
+      const newDatasetId = result.dataset_id;
+      setDatasetId(newDatasetId);
+
+      setDatasetInfo((prev) => ({
+        ...prev,
+        id: newDatasetId,
+        name: result.filename || file.name,
+        batch_filename: result.filename || file.name,
+        file_size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+        total_teams: result.total_teams ?? prev.total_teams,
+        file_hash_short: result.dataset_hash ? result.dataset_hash.substring(0, 8) : '9b2d...1a4',
+      }));
+
+      showNotification(`✓ File ${file.name} ingested successfully! Dataset ID: ${newDatasetId} (${result.total_teams} teams)`);
+    } catch (err) {
+      const msg = err.message || 'Import parsing failed.';
+      setUploadError(msg);
+      showNotification(`⚠️ Upload failed: ${msg}`);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   // Calculations for integrity score
@@ -90,11 +115,11 @@ export default function SchemaMapperPage({ onNavigateHome, onProceedToQualityChe
     if (onProceedToQualityCheck) {
       setTimeout(() => {
         onProceedToQualityCheck();
-      }, 900);
+      }, 700);
     } else {
       setTimeout(() => {
-        navigate('/data-quality');
-      }, 900);
+        navigateWithState('/data-quality');
+      }, 700);
     }
   };
 
@@ -239,7 +264,13 @@ export default function SchemaMapperPage({ onNavigateHome, onProceedToQualityChe
       {showReupload && (
         <ReuploadModal
           onClose={() => setShowReupload(false)}
-          onFileSelect={handleFileSelect}
+          onFileSelect={async (file) => {
+            await handleFileSelect(file);
+            setShowReupload(false);
+          }}
+          isUploading={isUploading}
+          uploadError={uploadError}
+          campaignId={campaignId}
         />
       )}
     </div>

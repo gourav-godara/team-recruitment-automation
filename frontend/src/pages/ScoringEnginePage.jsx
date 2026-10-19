@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SchemaHeader from '../components/schema/SchemaHeader';
 import SchemaSidebar from '../components/schema/SchemaSidebar';
@@ -20,9 +20,16 @@ import {
   mockSimulationTeams,
   computeSimulationRankings,
 } from '../data/mockScoring';
+import { getRulesCatalog, evaluate, buildEvaluatePayload } from '../api/client';
+import { useApp } from '../context/AppContext';
 
 export default function ScoringEnginePage({ onNavigateHome, onProceedToRankedResults }) {
   const navigate = useNavigate();
+  const { datasetId, runId, setRunId, navigateWithState } = useApp();
+
+  // Rules catalog loaded from backend
+  const [rulesCatalog, setRulesCatalog] = useState([]);
+  const [catalogError, setCatalogError] = useState(null);
 
   // Model & weights state
   const [weights, setWeights] = useState({
@@ -197,6 +204,17 @@ export default function ScoringEnginePage({ onNavigateHome, onProceedToRankedRes
     showNotification('↺ Engine configuration reset to default Baseline (Balanced v3, 4 Gates).');
   };
 
+  // Load Rule Catalog from Backend on mount
+  useEffect(() => {
+    getRulesCatalog()
+      .then((catalog) => {
+        if (Array.isArray(catalog)) setRulesCatalog(catalog);
+      })
+      .catch((err) => {
+        setCatalogError(err.message);
+      });
+  }, []);
+
   // Preview shortlist impact
   const handlePreviewImpact = () => {
     setIsComputing(true);
@@ -206,20 +224,75 @@ export default function ScoringEnginePage({ onNavigateHome, onProceedToRankedRes
     }, 500);
   };
 
-  // Run scoring engine
-  const handleRunEngine = () => {
-    setShowRunModal(true);
+  // Run scoring engine with Decision Engine API
+  const handleRunEngine = async () => {
+    // 1. Validate weights sum to 100% (1.0)
+    if (Math.abs(totalSum - 100) > 0.1) {
+      showNotification(`⚠️ Scoring weights must sum to 100% (current sum: ${totalSum}%). Balance sliders before evaluating.`);
+      return;
+    }
+
+    if (datasetId) {
+      setIsComputing(true);
+      showNotification('⚡ Sending configuration to backend Decision Engine...');
+      try {
+        // Map 4 sliders to normalized criteria weights summing to 1.0
+        const w1 = weights.w1 / 100;
+        const w2 = weights.w2 / 100;
+        const w3 = weights.w3 / 100;
+        const w4 = (100 - weights.w1 - weights.w2 - weights.w3) / 100;
+
+        const weightsObj = {
+          experience_years: Number(w1.toFixed(4)),
+          github_composite_score: Number(w2.toFixed(4)),
+          skills: Number(w4.toFixed(4)),
+          presentation: Number(w3.toFixed(4)),
+        };
+
+        // Format active hard gates
+        const activeRules = [];
+        gates.forEach((gate) => {
+          if (!gate.enabled) return;
+          if (gate.id === 'gate4' || gate.criterionKey === 'team_size') {
+            activeRules.push({
+              name: 'Team Size Range',
+              scope: 'TEAM',
+              field: 'team_size',
+              operator: 'BETWEEN',
+              value: [2, 5],
+              enabled: true,
+            });
+          }
+        });
+
+        const payload = buildEvaluatePayload(datasetId, topQuota, activeRules, weightsObj);
+        const evalResult = await evaluate(payload);
+
+        if (evalResult && evalResult.run_id) {
+          setRunId(evalResult.run_id);
+          showNotification(`✓ Run #${evalResult.run_id} evaluated & saved! (${evalResult.eligible_teams} eligible teams)`);
+        }
+        setShowRunModal(true);
+      } catch (err) {
+        showNotification(`⚠️ Evaluation failed: ${err.message}`);
+      } finally {
+        setIsComputing(false);
+      }
+    } else {
+      showNotification('ℹ️ No uploaded dataset ID found. Simulating preview rankings...');
+      setShowRunModal(true);
+    }
   };
 
   // Proceed to Ranked Results (Stage 04)
   const handleProceedToRankedResults = () => {
     setShowRunModal(false);
-    showNotification('🔒 State Sealed: SHA-256 seal 0x8f92b7c4 verified. Advancing to Stage 04: Ranked Results...');
+    showNotification('🔒 State Sealed: Consensus rank verified. Advancing to Stage 04: Ranked Results...');
     setTimeout(() => {
       if (onProceedToRankedResults) {
         onProceedToRankedResults();
       } else {
-        navigate('/ranked-results');
+        navigateWithState('/ranked-results');
       }
     }, 700);
   };

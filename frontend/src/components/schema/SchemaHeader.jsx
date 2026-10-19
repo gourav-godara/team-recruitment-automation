@@ -1,7 +1,12 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useApp } from '../../context/AppContext';
+import CampaignsModal from '../campaigns/CampaignsModal';
 
 export default function SchemaHeader({ datasetInfo, onNavigateHome }) {
   const navigate = useNavigate();
+  const { campaignId } = useApp();
+  const [showCampaignsModal, setShowCampaignsModal] = useState(false);
 
   const handleHomeClick = () => {
     if (onNavigateHome) {
@@ -12,29 +17,41 @@ export default function SchemaHeader({ datasetInfo, onNavigateHome }) {
   };
 
   return (
-    <header className="fixed top-0 left-0 right-0 h-16 z-50 bg-surface-container-lowest border-b-2 border-[#0f172a] shadow-[0_2px_0px_#0f172a]">
-      <div className="w-full h-16 px-gutter-lg flex items-center justify-between gap-space-md">
-        {/* Brand & Indicators */}
-        <div className="flex items-center gap-space-md">
-          <div className="flex items-center gap-space-sm cursor-pointer" onClick={handleHomeClick}>
-            {/* Neo-Memphis Brand Logo */}
-            <div className="w-9 h-9 rounded-md bg-secondary-fixed border-2 border-[#0f172a] shadow-[2px_2px_0px_#0f172a] flex items-center justify-center font-display font-extrabold text-xl text-on-surface">
-              ⚡
+    <>
+      <header className="fixed top-0 left-0 right-0 h-16 z-50 bg-surface-container-lowest border-b-2 border-[#0f172a] shadow-[0_2px_0px_#0f172a]">
+        <div className="w-full h-16 px-gutter-lg flex items-center justify-between gap-space-md">
+          {/* Brand & Indicators */}
+          <div className="flex items-center gap-space-md">
+            <div className="flex items-center gap-space-sm cursor-pointer" onClick={handleHomeClick}>
+              {/* Neo-Memphis Brand Logo */}
+              <div className="w-9 h-9 rounded-md bg-secondary-fixed border-2 border-[#0f172a] shadow-[2px_2px_0px_#0f172a] flex items-center justify-center font-display font-extrabold text-xl text-on-surface">
+                ⚡
+              </div>
+              <span className="font-headline-sm text-headline-sm tracking-tight text-on-surface font-extrabold">
+                ShortlistIQ
+              </span>
+              <span className="font-label-sm text-label-sm uppercase px-2 py-0.5 rounded-full bg-secondary-fixed text-on-secondary-fixed border-2 border-[#0f172a] shadow-[1px_1px_0px_#0f172a] font-extrabold">
+                JURY DECK
+              </span>
+              <span className="font-label-sm text-label-sm px-2 py-0.5 rounded-full bg-primary-container text-on-primary-container border-2 border-[#0f172a] shadow-[1px_1px_0px_#0f172a] font-bold">
+                v2.4 LIVE
+              </span>
             </div>
-            <span className="font-headline-sm text-headline-sm tracking-tight text-on-surface font-extrabold">
-              ShortlistIQ
-            </span>
-            <span className="font-label-sm text-label-sm uppercase px-2 py-0.5 rounded-full bg-secondary-fixed text-on-secondary-fixed border-2 border-[#0f172a] shadow-[1px_1px_0px_#0f172a] font-extrabold">
-              JURY DECK
-            </span>
-            <span className="font-label-sm text-label-sm px-2 py-0.5 rounded-full bg-primary-container text-on-primary-container border-2 border-[#0f172a] shadow-[1px_1px_0px_#0f172a] font-bold">
-              v2.4 LIVE
-            </span>
-          </div>
 
-          <div className="h-6 w-0.5 bg-outline-variant hidden sm:block"></div>
+            {/* Campaign Selection Capsule */}
+            <button
+              type="button"
+              onClick={() => setShowCampaignsModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed border-2 border-[#0f172a] shadow-[2px_2px_0px_#0f172a] text-xs font-bold hover:scale-[1.02] transition-all cursor-pointer"
+              title="Manage or switch recruitment campaigns"
+            >
+              <span className="material-symbols-outlined text-sm font-bold">event_note</span>
+              <span>{campaignId ? `Campaign #${campaignId}` : 'Campaigns'}</span>
+            </button>
 
-          {/* Dataset Status Capsule */}
+            <div className="h-6 w-0.5 bg-outline-variant hidden sm:block"></div>
+
+            {/* Dataset Status Capsule */}
           <div className="hidden xl:flex items-center gap-space-sm bg-surface-container-low px-3 py-1 rounded-full border-2 border-[#0f172a] shadow-[2px_2px_0px_#0f172a]">
             <span className="flex h-2.5 w-2.5 relative">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10b981] opacity-75"></span>
@@ -91,5 +108,7 @@ export default function SchemaHeader({ datasetInfo, onNavigateHome }) {
         </div>
       </div>
     </header>
-  );
+    <CampaignsModal isOpen={showCampaignsModal} onClose={() => setShowCampaignsModal(false)} />
+  </>
+);
 }

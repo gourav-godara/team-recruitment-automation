@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { downloadCsv } from '../../api/client';
 
 export default function ExportLedgerModal({
   isOpen,
@@ -8,11 +9,25 @@ export default function ExportLedgerModal({
 }) {
   const [format, setFormat] = useState('csv'); // 'csv' | 'json'
   const [downloaded, setDownloaded] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
+    setIsExporting(true);
     if (format === 'csv') {
+      if (runInfo && runInfo.run_id && String(runInfo.run_id) !== 'run_mock_0492') {
+        try {
+          await downloadCsv(runInfo.run_id, `consensus_jury_ledger_${runInfo.run_id}.csv`, 'full');
+          setDownloaded(true);
+          setTimeout(() => setDownloaded(false), 3000);
+          setIsExporting(false);
+          return;
+        } catch (err) {
+          console.warn('API export failed, falling back to client CSV generation:', err);
+        }
+      }
+
       const headers = [
         'rank',
         'external_id',
@@ -31,37 +46,38 @@ export default function ExportLedgerModal({
         `"${t.external_id}"`,
         `"${t.team_name}"`,
         `"${t.track}"`,
-        t.total_score.toFixed(2),
+        t.total_score ? t.total_score.toFixed(2) : '0.00',
         `"${t.status}"`,
-        t.raw_vectors.tech,
-        t.raw_vectors.repo,
-        t.raw_vectors.pitch,
-        t.raw_vectors.velocity,
-        t.jitter_risk_pct,
+        t.raw_vectors?.tech ?? 0,
+        t.raw_vectors?.repo ?? 0,
+        t.raw_vectors?.pitch ?? 0,
+        t.raw_vectors?.velocity ?? 0,
+        t.jitter_risk_pct ?? '0%',
       ]);
       const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `consensus_jury_ledger_stage04_${runInfo.file_hash_short}.csv`;
+      a.download = `consensus_jury_ledger_stage04_${runInfo?.file_hash_short || 'export'}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     } else {
       const data = {
         run_info: runInfo,
         teams: teams,
-        sha256_seal: runInfo.result_hash,
+        sha256_seal: runInfo?.result_hash,
         exported_at: new Date().toISOString(),
       };
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `consensus_run_ledger_${runInfo.file_hash_short}.json`;
+      a.download = `consensus_run_ledger_${runInfo?.file_hash_short || 'export'}.json`;
       a.click();
       URL.revokeObjectURL(url);
     }
+    setIsExporting(false);
     setDownloaded(true);
     setTimeout(() => setDownloaded(false), 3000);
   };

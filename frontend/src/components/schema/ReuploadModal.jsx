@@ -1,12 +1,12 @@
 import { useState, useRef } from 'react';
 
-export default function ReuploadModal({ onClose, onFileSelect }) {
+export default function ReuploadModal({ onClose, onFileSelect, isUploading = false, uploadError = null, campaignId = null }) {
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef(null);
 
   const handleDrag = (e) => {
     e.preventDefault();
-    setIsDragOver(true);
+    if (!isUploading) setIsDragOver(true);
   };
 
   const handleLeave = (e) => {
@@ -17,16 +17,14 @@ export default function ReuploadModal({ onClose, onFileSelect }) {
   const handleDrop = (e) => {
     e.preventDefault();
     setIsDragOver(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+    if (!isUploading && e.dataTransfer.files && e.dataTransfer.files[0]) {
       onFileSelect(e.dataTransfer.files[0]);
-      onClose();
     }
   };
 
   const handleInputChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
+    if (!isUploading && e.target.files && e.target.files[0]) {
       onFileSelect(e.target.files[0]);
-      onClose();
     }
   };
 
@@ -66,23 +64,56 @@ export default function ReuploadModal({ onClose, onFileSelect }) {
             onDragOver={handleDrag}
             onDragLeave={handleLeave}
             onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            className={`p-8 rounded-xl border-3 border-dashed border-[#0f172a] flex flex-col items-center justify-center gap-3 text-center cursor-pointer transition-all ${
-              isDragOver ? 'bg-secondary-fixed/50 scale-[1.02]' : 'bg-surface-container-low hover:bg-surface-container'
+            onClick={() => !isUploading && fileInputRef.current?.click()}
+            className={`p-8 rounded-xl border-3 border-dashed border-[#0f172a] flex flex-col items-center justify-center gap-3 text-center transition-all ${
+              isUploading
+                ? 'bg-surface-container-high opacity-80 cursor-wait'
+                : isDragOver
+                ? 'bg-secondary-fixed/50 scale-[1.02] cursor-pointer'
+                : 'bg-surface-container-low hover:bg-surface-container cursor-pointer'
             }`}
           >
-            <div className="w-14 h-14 rounded-full bg-secondary-fixed border-2 border-[#0f172a] shadow-[2px_2px_0px_#0f172a] flex items-center justify-center text-on-surface font-bold">
-              <span className="material-symbols-outlined text-3xl">cloud_upload</span>
-            </div>
-            <div>
-              <div className="font-headline-sm text-lg font-bold text-on-surface">
-                Drop new CSV / JSON batch here
+            {isUploading ? (
+              <div className="flex flex-col items-center gap-3 py-4">
+                <span className="material-symbols-outlined text-4xl animate-spin text-primary">
+                  progress_activity
+                </span>
+                <span className="font-headline-sm text-base font-bold text-on-surface">
+                  Ingesting &amp; Parsing Dataset into Backend...
+                </span>
+                <span className="font-mono text-xs text-on-surface-variant">
+                  Sending file with campaign_id: {campaignId || 'None (Default)'}
+                </span>
               </div>
-              <div className="font-body-sm text-xs text-on-surface-variant mt-1">
-                Supports Taikai, Devpost, DoraHacks, and custom CSV exports up to 50MB.
-              </div>
-            </div>
+            ) : (
+              <>
+                <div className="w-14 h-14 rounded-full bg-secondary-fixed border-2 border-[#0f172a] shadow-[2px_2px_0px_#0f172a] flex items-center justify-center text-on-surface font-bold">
+                  <span className="material-symbols-outlined text-3xl">cloud_upload</span>
+                </div>
+                <div>
+                  <div className="font-headline-sm text-lg font-bold text-on-surface">
+                    Drop new CSV / JSON batch here
+                  </div>
+                  <div className="font-body-sm text-xs text-on-surface-variant mt-1">
+                    Supports registrations CSV with headers (team_id, team_name, name, email, etc.)
+                  </div>
+                  {campaignId && (
+                    <div className="mt-2 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-secondary-fixed text-on-secondary-fixed font-mono text-xs font-bold border border-[#0f172a]">
+                      <span className="material-symbols-outlined text-xs">folder</span>
+                      <span>Target Campaign #{campaignId}</span>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
+
+          {uploadError && (
+            <div className="p-3 bg-rose-50 border-2 border-rose-600 rounded-lg text-rose-800 text-xs flex items-center gap-2">
+              <span className="material-symbols-outlined text-sm font-bold">error</span>
+              <span className="font-medium">Upload failed: {uploadError}</span>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -90,16 +121,18 @@ export default function ReuploadModal({ onClose, onFileSelect }) {
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-1.5 rounded bg-surface-container text-on-surface font-bold border-2 border-[#0f172a] cursor-pointer"
+            disabled={isUploading}
+            className="px-4 py-1.5 rounded bg-surface-container text-on-surface font-bold border-2 border-[#0f172a] cursor-pointer disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             type="button"
+            disabled={isUploading}
             onClick={() => fileInputRef.current?.click()}
-            className="px-4 py-1.5 rounded bg-primary-container text-on-primary-container font-bold border-2 border-[#0f172a] shadow-[2px_2px_0px_#0f172a] cursor-pointer"
+            className="px-4 py-1.5 rounded bg-primary-container text-on-primary-container font-bold border-2 border-[#0f172a] shadow-[2px_2px_0px_#0f172a] cursor-pointer disabled:opacity-50"
           >
-            Browse Local File
+            {isUploading ? 'Uploading...' : 'Browse Local File'}
           </button>
         </div>
       </div>

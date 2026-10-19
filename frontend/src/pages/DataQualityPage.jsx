@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SchemaHeader from '../components/schema/SchemaHeader';
 import SchemaSidebar from '../components/schema/SchemaSidebar';
@@ -20,13 +20,19 @@ import {
   mockRestrictedVideos,
 } from '../data/mockQuality';
 import { downloadDqDiagnosticCsv } from '../utils/exportCsv';
+import { getQualityReport } from '../api/client';
+import { useApp } from '../context/AppContext';
 
 export default function DataQualityPage({ onNavigateHome, onProceedToScoring }) {
   const navigate = useNavigate();
-  const [dataset] = useState(mockQualityDataset);
-  const [cohorts] = useState(mockNullityCohorts);
-  const [vectors] = useState(mockSignalVectors);
+  const { datasetId, navigateWithState } = useApp();
+  const [dataset, setDataset] = useState(mockQualityDataset);
+  const [cohorts, setCohorts] = useState(mockNullityCohorts);
+  const [vectors, setVectors] = useState(mockSignalVectors);
   const [quarantinedTeams, setQuarantinedTeams] = useState(mockQuarantinedTeams);
+  const [qualityReport, setQualityReport] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [activeStage, setActiveStage] = useState('data-quality');
 
   // Modals state
@@ -42,6 +48,90 @@ export default function DataQualityPage({ onNavigateHome, onProceedToScoring }) 
       setToast(null);
     }, 4000);
   };
+
+  // Fetch real Quality Report from API when datasetId is available
+  useEffect(() => {
+    if (!datasetId) return;
+
+    let isMounted = true;
+    setLoading(true);
+    setError(null);
+
+    getQualityReport(datasetId)
+      .then((report) => {
+        if (!isMounted) return;
+        setQualityReport(report);
+
+        // Update dataset summary KPIs
+        setDataset((prev) => ({
+          ...prev,
+          signal_completeness: report.completeness_score != null ? report.completeness_score.toFixed(1) : prev.signal_completeness,
+          total_teams: report.total_teams ?? prev.total_teams,
+          complete_records_pct: report.total_teams > 0
+            ? (((report.total_teams - (report.teams_with_missing_signals?.length || 0)) / report.total_teams) * 100).toFixed(1)
+            : '100.0',
+          complete_records_count: report.total_teams - (report.teams_with_missing_signals?.length || 0),
+          critical_gaps_count: (report.teams_with_missing_signals?.length || 0) + (report.malformed_urls?.length || 0),
+          audited_partition: `Dataset #${datasetId} (Raw Import)`,
+        }));
+
+        // Map field summaries to vectors
+        if (Array.isArray(report.field_summaries) && report.field_summaries.length > 0) {
+          const mappedVectors = report.field_summaries.map((fs, idx) => ({
+            id: `vec_${idx}`,
+            name: fs.field_name,
+            key: fs.field_name,
+            available_pct: fs.completeness_percentage ? fs.completeness_percentage.toFixed(1) : '100.0',
+            missing_count: fs.missing_count || 0,
+            invalid_count: fs.invalid_count || 0,
+            imputation_strategy: 'Strict Signal Pass',
+            status: fs.missing_count === 0 && fs.invalid_count === 0 ? 'valid' : 'warning',
+          }));
+          setVectors(mappedVectors);
+        }
+
+        // Map size anomalies and missing signals to quarantined teams
+        const anomalies = [];
+        if (Array.isArray(report.teams_with_size_anomalies)) {
+          report.teams_with_size_anomalies.forEach((teamId) => {
+            anomalies.push({
+              id: teamId,
+              name: `Team ${teamId}`,
+              reason: 'Team size anomaly (outside standard 2-4 roster)',
+              status: 'quarantined',
+              severity: 'critical',
+            });
+          });
+        }
+        if (Array.isArray(report.teams_with_missing_signals)) {
+          report.teams_with_missing_signals.forEach((teamId) => {
+            if (!anomalies.some((a) => a.id === teamId)) {
+              anomalies.push({
+                id: teamId,
+                name: `Team ${teamId}`,
+                reason: 'Missing required candidate signals (GitHub or portfolio URL)',
+                status: 'quarantined',
+                severity: 'warning',
+              });
+            }
+          });
+        }
+        if (anomalies.length > 0) {
+          setQuarantinedTeams(anomalies);
+        }
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        setError(err.message || 'Failed to fetch Data Quality Report.');
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [datasetId]);
 
   // Dynamically calculate ready teams & exclusions based on quarantined list
   const activeExclusions = quarantinedTeams.filter((t) => t.status === 'quarantined' || t.status === 'excluded').length;
@@ -73,11 +163,11 @@ export default function DataQualityPage({ onNavigateHome, onProceedToScoring }) 
     if (onProceedToScoring) {
       setTimeout(() => {
         onProceedToScoring();
-      }, 900);
+      }, 700);
     } else {
       setTimeout(() => {
-        navigate('/scoring-engine');
-      }, 900);
+        navigateWithState('/scoring-engine');
+      }, 700);
     }
   };
 
@@ -144,6 +234,43 @@ export default function DataQualityPage({ onNavigateHome, onProceedToScoring }) 
       <div className="pl-72">
         <main className="w-full min-h-[calc(100vh-4rem)] pt-16 bg-surface px-gutter-lg py-gutter-lg">
           <div className="flex flex-col w-full gap-space-lg">
+            {/* Loading Indicator */}
+            {loading && (
+              <div className="p-4 rounded-xl bg-primary-container text-on-primary-container border-2 border-[#0f172a] shadow-[4px_4px_0px_#0f172a] flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="material-symbols-outlined text-2xl animate-spin text-primary">progress_activity</span>
+                  <div>
+                    <span className="font-bold text-sm block">Fetching live Data Quality report for Dataset #{datasetId}...</span>
+                    <span className="text-xs opacity-80">Computing field completeness, size anomalies, and missing signals</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Error Indicator */}
+            {error && (
+              <div className="p-4 rounded-xl bg-rose-50 border-2 border-rose-600 shadow-[4px_4px_0px_#0f172a] text-rose-800 text-xs flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-lg font-bold">error</span>
+                  <span><strong>Quality Report Error:</strong> {error}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError(null);
+                    setLoading(true);
+                    getQualityReport(datasetId)
+                      .then((report) => setQualityReport(report))
+                      .catch((err) => setError(err.message))
+                      .finally(() => setLoading(false));
+                  }}
+                  className="px-3 py-1 bg-white border border-rose-600 rounded font-bold hover:bg-rose-100 cursor-pointer"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
             {/* Top Hero Bar / Triage Ribbon */}
             <QualityHeaderBanner dataset={dataset} />
 
