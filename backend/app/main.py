@@ -1,5 +1,12 @@
 from contextlib import asynccontextmanager
+import json
+import sqlite3
 from fastapi import FastAPI
+
+# Register universal SQLite adapters for dict and list parameter bindings
+sqlite3.register_adapter(dict, json.dumps)
+sqlite3.register_adapter(list, json.dumps)
+
 from backend.app.api.campaigns import router as campaigns_router
 from backend.app.api.evaluations import router as evaluations_router
 from backend.app.api.exports import router as exports_router

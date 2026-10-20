@@ -60,6 +60,8 @@ if HAS_SQLALCHEMY and Base is not None:
                 return None
             if dialect.name == "postgresql":
                 return value
+            if isinstance(value, str):
+                return value
             return json.dumps(value)
 
         def process_result_value(self, value, dialect):
