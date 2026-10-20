@@ -68,6 +68,12 @@ def _check_run_session_access(db: Any, run_id: Union[int, str], session_id: str)
     status_code=status.HTTP_201_CREATED,
     summary="Evaluate an imported candidate dataset and persist results (No Login Required)",
 )
+@router.post(
+    "/evaluate",
+    response_model=ScoringEvaluationResponse,
+    status_code=status.HTTP_201_CREATED,
+    include_in_schema=False,
+)
 def evaluate_dataset(
     request_data: EvaluateDatasetRequest,
     request: Request,

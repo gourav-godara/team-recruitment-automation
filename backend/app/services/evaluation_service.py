@@ -128,6 +128,15 @@ class EvaluationService:
         if hasattr(db, "flush"):
             db.flush()
 
+        # Track existing criteria keys to avoid duplicate inserts
+        seen_criteria = set()
+        if hasattr(db, "query"):
+            try:
+                for row in db.query(Criterion.key).all():
+                    seen_criteria.add(row[0] if isinstance(row, tuple) else row)
+            except Exception:
+                pass
+
         # 5. Persist team results in 'run_results', 'run_score_details', 'run_rule_results'
         for res in response.results:
             db_team_id = team_id_map.get(str(res.team_id))
@@ -164,16 +173,18 @@ class EvaluationService:
             # Persist per-criterion score details in 'run_score_details'
             for cd in res.detailed_contributions:
                 # Ensure criterion exists in 'criteria'
-                crit = db.query(Criterion).filter_by(key=cd.criterion).first()
-                if not crit:
-                    db.add(
-                        Criterion(
-                            key=cd.criterion,
-                            label=cd.criterion.replace("_", " ").title(),
-                            source="scoring_engine",
-                            value_type="number",
+                if cd.criterion not in seen_criteria:
+                    seen_criteria.add(cd.criterion)
+                    crit = db.query(Criterion).filter_by(key=cd.criterion).first()
+                    if not crit:
+                        db.add(
+                            Criterion(
+                                key=cd.criterion,
+                                label=cd.criterion.replace("_", " ").title(),
+                                source="scoring_engine",
+                                value_type="number",
+                            )
                         )
-                    )
 
                 # data_status: 'ok', 'partial', 'missing'
                 if cd.status == SignalState.MISSING:
