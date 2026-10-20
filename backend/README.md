@@ -168,11 +168,13 @@ PYTHONPATH=backend/data_processing:. .venv/bin/pytest backend/tests backend/data
 
 ---
 
-## 7. Known Limitations & Deferred Features
+## 7. Project Ownership & Engineering Team
 
-The following planned modules are intentionally deferred outside the MVP:
-- Authentication & user roles (owned by Susmita / Supabase Auth).
-- Live GitHub API integration (owned by Dushant).
-- Automated resume parsing and LinkedIn scraping.
-- Sensitivity analysis and dashboard comparison views.
-- Teammate placeholders (`auth.py`, `campaigns.py`, `github.py`, `rules.py`, `overrides.py`, `comparison.py`) are preserved untouched for integration.
+- **Backend & Core Decision Engine:** Gourav Godara
+- **Data Ingestion & Normalization:** Ritika
+- **Database Architecture & Schema:** Sushmita
+- **Frontend & User Interface:** Geet
+
+For the detailed architectural specification, sequence diagrams, and granular module ownership, see:
+[`docs/SYSTEM_ARCHITECTURE.md`](../docs/SYSTEM_ARCHITECTURE.md)
+

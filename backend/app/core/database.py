@@ -75,13 +75,13 @@ if HAS_SQLALCHEMY:
 
 
 def init_db():
-    """Initializes schema tables when SQLite is configured for local development."""
-    if HAS_SQLALCHEMY and engine is not None and not is_postgres_configured:
+    """Initializes schema tables if not already present."""
+    if HAS_SQLALCHEMY and engine is not None:
         try:
             from backend.app.models.entities import Base as EntityBase
             EntityBase.metadata.create_all(bind=engine)
         except Exception as e:
-            logger.warning(f"Could not auto-create SQLite tables: {e}")
+            logger.warning(f"Could not auto-create tables: {e}")
 
 
 class InMemoryTransactionSession:
