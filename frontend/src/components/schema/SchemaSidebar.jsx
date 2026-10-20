@@ -1,8 +1,10 @@
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useApp } from '../../context/AppContext';
 
 export default function SchemaSidebar({ activeStage, onStageSelect }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { navigateWithState } = useApp();
 
   const currentStage =
     activeStage ||
@@ -95,19 +97,19 @@ export default function SchemaSidebar({ activeStage, onStageSelect }) {
                 type="button"
                 onClick={() => {
                   if (stage.id === 'import-schema') {
-                    navigate('/schema-mapper');
+                    navigateWithState('/schema-mapper');
                   } else if (stage.id === 'data-quality') {
-                    navigate('/data-quality');
+                    navigateWithState('/data-quality');
                   } else if (stage.id === 'scoring-engine') {
-                    navigate('/scoring-engine');
+                    navigateWithState('/scoring-engine');
                   } else if (stage.id === 'ranked-results') {
-                    navigate('/ranked-results');
+                    navigateWithState('/ranked-results');
                   } else if (stage.id === 'team-compare') {
-                    navigate('/team-compare');
+                    navigateWithState('/team-compare');
                   } else if (stage.id === 'stability-stress') {
-                    navigate('/stability-stress');
+                    navigateWithState('/stability-stress');
                   } else if (stage.id === 'export-audit') {
-                    navigate('/export-audit');
+                    navigateWithState('/export-audit');
                   }
                   if (onStageSelect) {
                     onStageSelect(stage.id);

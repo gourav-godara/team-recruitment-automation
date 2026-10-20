@@ -249,17 +249,36 @@ export default function ScoringEnginePage({ onNavigateHome, onProceedToRankedRes
           presentation: Number(w3.toFixed(4)),
         };
 
-        // Format active hard gates
+        // Format active hard gates to backend rule catalog
         const activeRules = [];
         gates.forEach((gate) => {
           if (!gate.enabled) return;
           if (gate.id === 'gate4' || gate.criterionKey === 'team_size') {
             activeRules.push({
+              id: 'gate_team_size',
               name: 'Team Size Range',
-              scope: 'TEAM',
-              field: 'team_size',
-              operator: 'BETWEEN',
-              value: [2, 5],
+              type: 'TEAM_SIZE_BETWEEN',
+              min_value: 2,
+              max_value: 5,
+              enabled: true,
+            });
+          } else if (gate.id === 'gate1') {
+            activeRules.push({
+              id: 'gate_gender_diversity',
+              name: 'At Least One Female Member',
+              type: 'COUNT_AT_LEAST',
+              field: 'declared_gender',
+              target_value: 'female',
+              threshold: 1.0,
+              enabled: true,
+            });
+          } else if (gate.id === 'gate2') {
+            activeRules.push({
+              id: 'gate_min_experience',
+              name: 'Minimum Experience',
+              type: 'NUMBER_GTE',
+              field: 'experience_years',
+              threshold: 1.0,
               enabled: true,
             });
           }

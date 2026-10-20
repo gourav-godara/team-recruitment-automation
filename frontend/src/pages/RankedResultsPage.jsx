@@ -11,7 +11,7 @@ import ExportLedgerModal from '../components/ranked/ExportLedgerModal';
 import FlagReevalModal from '../components/ranked/FlagReevalModal';
 import { mockDatasetInfo } from '../data/mockSchema';
 import { mockRankedRunInfo, mockRankedTeams } from '../data/mockRankedResults';
-import { getRun, getLeaderboard } from '../api/client';
+import { getRun, getLeaderboard, applyOverride } from '../api/client';
 import { useApp } from '../context/AppContext';
 
 export default function RankedResultsPage({ onNavigateHome, onProceedToTeamCompare }) {
@@ -259,7 +259,16 @@ export default function RankedResultsPage({ onNavigateHome, onProceedToTeamCompa
   }, [teams, activeTab, activeTrack, shortlistedOnly, searchQuery, sortBy, runInfo.shortlist_quota]);
 
   // Action handlers
-  const handlePromoteFinal = (team) => {
+  const handlePromoteFinal = async (team) => {
+    if (runId) {
+      try {
+        await applyOverride(runId, team.external_id || team.team_id, 'pin', 'Promoted to Final by Reviewer');
+        showNotification(`🎖️ ${team.team_name} pinned to Finalists and logged to Audit Trail!`);
+        return;
+      } catch (err) {
+        console.warn('Override API failed:', err);
+      }
+    }
     showNotification(`🎖️ ${team.team_name} officially confirmed for Grand Stage Finalist showcase!`);
   };
 
@@ -268,7 +277,14 @@ export default function RankedResultsPage({ onNavigateHome, onProceedToTeamCompa
     setShowFlagModal(true);
   };
 
-  const handleSubmitFlag = (teamId, flagData) => {
+  const handleSubmitFlag = async (teamId, flagData) => {
+    if (runId) {
+      try {
+        await applyOverride(runId, teamId, 'waitlist', flagData.reason || 'Flagged for re-evaluation');
+      } catch (err) {
+        console.warn('Flag override failed:', err);
+      }
+    }
     setTeams((prev) =>
       prev.map((t) =>
         t.team_id === teamId

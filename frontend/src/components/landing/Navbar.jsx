@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 
-export default function Navbar({ onLoadDemo, onDropCsvClick }) {
+export default function Navbar({ onDropCsvClick }) {
 
   return (
     <header className="fixed top-3 left-0 right-0 z-50 px-4 max-w-7xl mx-auto">
@@ -64,21 +64,12 @@ export default function Navbar({ onLoadDemo, onDropCsvClick }) {
         {/* Action Buttons */}
         <div className="flex items-center gap-2 shrink-0">
           <button
-            id="nav-demo-btn"
-            type="button"
-            onClick={onLoadDemo}
-            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-yellow font-display font-bold text-xs md:text-sm text-brand-dark retro-border shadow-pop-sm hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-pop-hover active:shadow-none transition-all cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-sm font-bold">bolt</span>
-            <span>Load 482 Teams</span>
-          </button>
-          <button
             type="button"
             onClick={onDropCsvClick}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-brand-blue text-white font-display font-bold text-xs md:text-sm retro-border shadow-pop hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-pop-hover active:shadow-none transition-all cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand-blue text-white font-display font-bold text-xs md:text-sm retro-border shadow-pop hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-pop-hover active:shadow-none transition-all cursor-pointer"
           >
             <span className="material-symbols-outlined text-sm font-bold">file_upload</span>
-            <span>Drop CSV</span>
+            <span>Upload Registrations</span>
           </button>
         </div>
       </div>
