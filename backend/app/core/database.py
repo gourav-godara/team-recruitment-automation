@@ -6,6 +6,7 @@ Provides session lifecycle management, transaction rollback on failure, connecti
 from contextlib import contextmanager
 import logging
 import os
+from pathlib import Path
 from typing import Generator
 
 from backend.app.core.config import settings
@@ -35,20 +36,15 @@ is_postgres_configured = (
     settings.DATABASE_URL.startswith("postgresql://")
     or settings.DATABASE_URL.startswith("postgres://")
 )
+is_postgres_active = False
+
+sqlite_path = Path(__file__).resolve().parent.parent.parent / "recruitment.db"
+sqlite_url = f"sqlite:///{sqlite_path}"
 
 if HAS_SQLALCHEMY:
     Base = declarative_base()
-    connect_args = {}
 
-    if settings.DATABASE_URL.startswith("sqlite"):
-        connect_args["check_same_thread"] = False
-        engine = create_engine(
-            settings.DATABASE_URL,
-            connect_args=connect_args,
-            echo=settings.DEBUG,
-        )
-        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    elif is_postgres_configured:
+    if is_postgres_configured:
         try:
             pg_url = settings.DATABASE_URL
             if pg_url.startswith("postgres://"):
@@ -56,32 +52,72 @@ if HAS_SQLALCHEMY:
             elif pg_url.startswith("postgresql://") and not pg_url.startswith("postgresql+"):
                 pg_url = "postgresql+psycopg2://" + pg_url[len("postgresql://"):]
 
-            engine = create_engine(
+            pg_engine = create_engine(
                 pg_url,
                 pool_pre_ping=True,
                 pool_size=10,
                 max_overflow=20,
                 echo=settings.DEBUG,
+                connect_args={"connect_timeout": 5},
+            )
+            # Verify connectivity to remote PostgreSQL
+            from sqlalchemy import text
+            with pg_engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            engine = pg_engine
+            SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+            is_postgres_active = True
+            logger.info("Connected to remote PostgreSQL database successfully.")
+        except Exception as e:
+            logger.warning(
+                f"PostgreSQL connection failed ({e}). Falling back to local SQLite database: {sqlite_url}"
+            )
+            engine = create_engine(
+                sqlite_url,
+                connect_args={"check_same_thread": False},
+                echo=settings.DEBUG,
             )
             SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-        except Exception as e:
-            logger.error(f"Failed to initialize PostgreSQL SQLAlchemy engine: {e}")
-            engine = None
-            SessionLocal = None
+            is_postgres_active = False
+    elif settings.DATABASE_URL.startswith("sqlite"):
+        engine = create_engine(
+            settings.DATABASE_URL,
+            connect_args={"check_same_thread": False},
+            echo=settings.DEBUG,
+        )
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     else:
         # Default local engine
-        engine = None
-        SessionLocal = None
+        engine = create_engine(
+            sqlite_url,
+            connect_args={"check_same_thread": False},
+            echo=settings.DEBUG,
+        )
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def init_db():
     """Initializes schema tables if not already present."""
+    global engine, SessionLocal, is_postgres_active
     if HAS_SQLALCHEMY and engine is not None:
         try:
             from backend.app.models.entities import Base as EntityBase
             EntityBase.metadata.create_all(bind=engine)
         except Exception as e:
-            logger.warning(f"Could not auto-create tables: {e}")
+            logger.warning(f"Could not auto-create tables on primary engine: {e}")
+            if is_postgres_active:
+                logger.warning(f"Falling back to local SQLite database: {sqlite_url}")
+                engine = create_engine(
+                    sqlite_url,
+                    connect_args={"check_same_thread": False},
+                    echo=settings.DEBUG,
+                )
+                SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+                is_postgres_active = False
+                try:
+                    EntityBase.metadata.create_all(bind=engine)
+                except Exception as inner_e:
+                    logger.error(f"Failed to initialize SQLite fallback schema: {inner_e}")
 
 
 class InMemoryTransactionSession:
@@ -128,24 +164,30 @@ class InMemoryTransactionSession:
 def get_db() -> Generator:
     """FastAPI dependency yielding a managed database session with transaction rollback on error.
 
-    Raises DatabaseConnectionError if PostgreSQL is explicitly configured but connection cannot be established.
+    Raises DatabaseConnectionError if PostgreSQL is explicitly configured but SQLAlchemy or SessionLocal is unavailable.
     """
-    if is_postgres_configured:
-        if not HAS_SQLALCHEMY or SessionLocal is None:
-            raise DatabaseConnectionError(
-                "PostgreSQL is configured via DATABASE_URL, but SQLAlchemy or psycopg2-binary driver is not available."
-            )
-        db = SessionLocal()
+    global engine, SessionLocal, is_postgres_active
+    if is_postgres_configured and (not HAS_SQLALCHEMY or SessionLocal is None):
+        raise DatabaseConnectionError(
+            "PostgreSQL is configured via DATABASE_URL, but SQLAlchemy or psycopg2-binary driver is not available."
+        )
+
+    if HAS_SQLALCHEMY and SessionLocal is not None:
         try:
-            yield db
-            db.commit()
-        except Exception:
-            db.rollback()
-            raise
-        finally:
-            db.close()
-    elif HAS_SQLALCHEMY and SessionLocal is not None:
-        db = SessionLocal()
+            db = SessionLocal()
+        except Exception as e:
+            logger.warning(f"Could not open session on primary engine ({e}). Reverting to local SQLite.")
+            engine = create_engine(
+                sqlite_url,
+                connect_args={"check_same_thread": False},
+                echo=settings.DEBUG,
+            )
+            SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+            is_postgres_active = False
+            from backend.app.models.entities import Base as EntityBase
+            EntityBase.metadata.create_all(bind=engine)
+            db = SessionLocal()
+
         try:
             yield db
             db.commit()

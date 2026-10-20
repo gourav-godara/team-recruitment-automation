@@ -58,13 +58,13 @@ export default function SchemaHeader({ datasetInfo, onNavigateHome }) {
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#10b981]"></span>
             </span>
             <span className="font-label-md text-label-md text-on-surface font-mono">
-              {datasetInfo.batch_filename}
+              {datasetInfo?.batch_filename || datasetInfo?.name || 'Candidate Registrations'}
             </span>
             <span className="font-label-sm text-label-sm text-on-surface-variant">
-              ({datasetInfo.total_teams} teams)
+              ({datasetInfo?.total_teams || 0} teams)
             </span>
             <span className="font-label-sm text-label-sm bg-[#10b981] text-on-primary px-2 py-0.5 rounded-full border border-[#0f172a] font-bold">
-              Engine Ready ({datasetInfo.engine_version})
+              Engine Ready ({datasetInfo?.engine_version || 'v2.0'})
             </span>
           </div>
         </div>
@@ -85,22 +85,22 @@ export default function SchemaHeader({ datasetInfo, onNavigateHome }) {
           {/* Hash Pill */}
           <div className="hidden lg:flex items-center gap-space-xs font-mono font-label-md text-label-md bg-surface-container px-3 py-1 rounded-full border-2 border-[#0f172a] shadow-[1px_1px_0px_#0f172a] text-on-surface">
             <span className="text-on-surface-variant font-label-sm text-label-sm">hash:</span>
-            <span className="font-bold">{datasetInfo.file_hash_short}</span>
+            <span className="font-bold">{datasetInfo?.file_hash_short || 'verified'}</span>
           </div>
 
           {/* Profile Capsule */}
           <div className="flex items-center gap-space-sm pl-2 border-l-2 border-outline-variant">
             <div className="text-right hidden sm:block">
               <div className="font-label-md text-label-md text-on-surface font-bold leading-tight">
-                {datasetInfo.jury_lead.name}
+                {datasetInfo?.jury_lead?.name || 'Recruiter'}
               </div>
               <div className="font-label-sm text-label-sm text-on-surface-variant font-semibold">
-                {datasetInfo.jury_lead.role}
+                {datasetInfo?.jury_lead?.role || 'Evaluation Lead'}
               </div>
             </div>
             <div className="relative">
               <div className="w-8 h-8 rounded-full bg-primary-fixed border-2 border-[#0f172a] shadow-[1px_1px_0px_#0f172a] flex items-center justify-center font-bold text-xs font-mono text-primary">
-                AR
+                RE
               </div>
               <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-secondary-fixed rounded-full border border-[#0f172a]"></span>
             </div>

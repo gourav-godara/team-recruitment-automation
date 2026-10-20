@@ -4,223 +4,183 @@ export default function RankedTableContainer({
   teams,
   selectedTeamId,
   onSelectTeam,
-  topQuota = 40,
-  cutoffScore = 84.60,
-  page = 1,
-  totalPages = 12,
-  onPageChange,
+  topQuota = 5,
+  cutoffScore = 75.0,
 }) {
+  if (!teams || teams.length === 0) {
+    return (
+      <div className="bg-surface-container-lowest rounded-xl border-2 border-[#0f172a] shadow-[4px_4px_0px_#0f172a] p-12 text-center flex flex-col items-center justify-center gap-3">
+        <span className="material-symbols-outlined text-5xl text-slate-400">
+          search_off
+        </span>
+        <h3 className="font-display font-bold text-xl text-brand-dark">
+          No teams match the current filter
+        </h3>
+        <p className="font-sans text-sm text-slate-600 max-w-md">
+          Try adjusting your search query or switching between the Shortlisted, Waitlisted, and Ineligible tabs.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-surface-container-lowest rounded-xl border-2 border-[#0f172a] shadow-[4px_4px_0px_#0f172a] overflow-hidden">
       {/* Table Header */}
-      <div className="bg-[#0f172a] text-on-primary px-4 py-3 flex items-center justify-between font-label-md text-label-md font-bold tracking-wider uppercase">
-        <div className="w-12 sm:w-16">Rank</div>
-        <div className="flex-1 min-w-0">Project &amp; Track</div>
-        <div className="w-32 hidden sm:block text-right">Vectors (T/R/P/V)</div>
-        <div className="w-24 text-right">Total Score</div>
-        <div className="w-36 text-right pr-2">Status Flag</div>
+      <div className="bg-[#0f172a] text-white px-4 py-3 flex items-center justify-between font-mono text-xs font-bold tracking-wider uppercase">
+        <div className="w-14">Rank</div>
+        <div className="flex-1 min-w-0 pr-4">Team &amp; Candidates</div>
+        <div className="w-24 text-center hidden md:block">Team Size</div>
+        <div className="w-32 text-right pr-4">Total Score</div>
+        <div className="w-36 text-center">Status</div>
+        <div className="w-24 text-right">Details</div>
       </div>
 
       {/* Table Body Rows */}
-      <div className="divide-y-2 divide-[#0f172a]/10 font-body-sm text-body-sm">
+      <div className="divide-y-2 divide-[#0f172a]/10 font-sans text-sm">
         {teams.map((team, index) => {
-          const isSelected = team.team_id === selectedTeamId;
+          const isSelected = String(team.team_id) === String(selectedTeamId);
           const prevTeam = index > 0 ? teams[index - 1] : null;
-          const isCutoffBoundary =
-            prevTeam && prevTeam.rank <= topQuota && team.rank > topQuota;
 
-          const isBubble = team.status_type === 'bubble';
-          const isExcluded = team.status_type === 'excluded';
-          const isWaitlist = team.status_type === 'waitlist';
+          // Shortlist quota boundary indicator
+          const isCutoffBoundary =
+            prevTeam &&
+            prevTeam.rank != null &&
+            team.rank != null &&
+            prevTeam.rank <= topQuota &&
+            team.rank > topQuota;
+
+          const isShortlisted =
+            team.status === 'SHORTLISTED' ||
+            (team.rank != null && team.rank <= topQuota && team.eligibility_status !== 'DISQUALIFIED');
+          const isIneligible =
+            team.eligibility_status === 'DISQUALIFIED' ||
+            team.status === 'DISQUALIFIED' ||
+            team.status === 'INELIGIBLE';
 
           return (
-            <Fragment key={team.team_id}>
-              {/* Critical Cutoff Demarcation Horizon */}
+            <Fragment key={team.team_id || index}>
+              {/* Shortlist Quota Cutoff Horizon */}
               {isCutoffBoundary && (
-                <div className="bg-secondary-fixed text-on-secondary-fixed border-y-4 border-[#0f172a] px-4 py-2 flex items-center justify-between shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)]">
-                  <div className="flex items-center gap-2 font-label-lg text-label-lg uppercase tracking-wider font-black">
-                    <span className="material-symbols-outlined font-black">block</span>
-                    <span>TOP {topQuota} FINALIST QUOTA HORIZON // CUTOFF SCORE {cutoffScore.toFixed(2)}</span>
+                <div className="bg-brand-yellow text-brand-dark border-y-2 border-[#0f172a] px-4 py-2 flex items-center justify-between shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)] font-mono text-xs font-black">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-sm font-black">
+                      horizontal_rule
+                    </span>
+                    <span>TOP {topQuota} SHORTLIST CUTOFF LINE</span>
                   </div>
-                  <span className="font-mono font-label-sm text-label-sm px-2 py-0.5 bg-[#0f172a] text-on-primary rounded font-bold shadow-[1px_1px_0px_#0f172a]">
-                    DELTA FLOOR -0.00
+                  <span className="px-2 py-0.5 bg-[#0f172a] text-white rounded text-[11px]">
+                    Cutoff: {Number(cutoffScore).toFixed(1)} pts
                   </span>
-                </div>
-              )}
-
-              {/* Virtualized Gap Indicator between top few and cutoff boundary if gap exists */}
-              {prevTeam && team.rank - prevTeam.rank > 5 && (
-                <div className="bg-surface-container-low/60 px-4 py-2 flex items-center justify-center gap-2 text-on-surface-variant font-mono font-label-sm text-label-sm">
-                  <span className="material-symbols-outlined text-sm">unfold_more</span>
-                  <span>... Virtualized Consensus Window (#{prevTeam.rank + 1} through #{team.rank - 1}) ...</span>
                 </div>
               )}
 
               {/* Table Row */}
               <div
                 onClick={() => onSelectTeam(team)}
-                className={`p-3 sm:px-4 flex items-center justify-between gap-2 transition-all cursor-pointer ${
+                className={`p-3.5 sm:px-4 flex items-center justify-between gap-3 transition-all cursor-pointer ${
                   isSelected
-                    ? 'bg-secondary-fixed/30 hover:bg-secondary-fixed/50 border-l-8 border-l-primary-container'
-                    : isBubble
-                    ? 'bg-secondary-fixed/20 hover:bg-secondary-fixed/40 border-2 border-[#f59e0b]'
-                    : isExcluded
-                    ? 'bg-error-container/30 hover:bg-error-container/50 opacity-80'
-                    : isWaitlist
-                    ? 'bg-surface-container-low/80 hover:bg-surface-container-high opacity-85'
-                    : 'hover:bg-surface-container-low'
+                    ? 'bg-amber-100/80 border-l-8 border-l-brand-blue'
+                    : isIneligible
+                    ? 'bg-rose-50/50 hover:bg-rose-50'
+                    : isShortlisted
+                    ? 'hover:bg-emerald-50/40'
+                    : 'hover:bg-slate-50'
                 }`}
               >
                 {/* Rank Number */}
-                <div className="w-12 sm:w-16 font-mono font-headline-sm text-headline-sm font-extrabold">
-                  <span
-                    className={
-                      isExcluded
-                        ? 'text-error'
-                        : isWaitlist
-                        ? 'text-outline'
-                        : 'text-on-surface'
-                    }
-                  >
-                    #{String(team.rank).padStart(2, '0')}
-                  </span>
-                </div>
-
-                {/* Project & Track */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
+                <div className="w-14 font-mono font-extrabold text-base sm:text-lg">
+                  {team.rank != null ? (
                     <span
-                      className={`font-headline-sm text-headline-sm font-bold truncate ${
-                        isExcluded ? 'text-on-surface line-through' : 'text-on-surface'
+                      className={`px-2 py-0.5 rounded border border-[#0f172a] shadow-[1px_1px_0px_#0f172a] ${
+                        isShortlisted
+                          ? 'bg-emerald-200 text-emerald-900'
+                          : isIneligible
+                          ? 'bg-rose-100 text-rose-800'
+                          : 'bg-white text-slate-800'
                       }`}
                     >
-                      {team.team_name}
+                      #{String(team.rank).padStart(2, '0')}
                     </span>
-                    {team.is_verified && (
-                      <span
-                        className="material-symbols-outlined text-primary-container text-base font-bold"
-                        title="Jury Verified"
-                      >
-                        verified
-                      </span>
-                    )}
-                    {isBubble && (
-                      <span
-                        className="material-symbols-outlined text-[#f59e0b] text-base font-bold"
-                        title="Bubble Vulnerability"
-                      >
-                        warning
-                      </span>
-                    )}
-                    {isWaitlist && (
-                      <span className="font-label-sm text-label-sm px-1.5 py-0.2 bg-outline-variant text-on-surface rounded font-mono font-bold">
-                        WAITLIST #{team.waitlist_number}
-                      </span>
-                    )}
-                  </div>
-                  <div
-                    className={`flex items-center gap-2 font-label-sm text-label-sm ${
-                      isExcluded ? 'text-error font-bold' : 'text-on-surface-variant'
-                    }`}
-                  >
-                    <span className="uppercase font-bold tracking-wide">{team.track}</span>
-                    <span>•</span>
-                    <span className="font-mono">
-                      {isExcluded ? team.exclusion_reason : team.external_id}
-                    </span>
-                  </div>
+                  ) : (
+                    <span className="text-slate-400 font-normal">--</span>
+                  )}
                 </div>
 
-                {/* Vectors (T/R/P/V) */}
-                <div className="w-32 hidden sm:flex flex-col items-end font-mono font-label-sm text-label-sm text-on-surface-variant">
-                  <span>
-                    {team.raw_vectors.tech.toFixed(1)} / {team.raw_vectors.repo.toFixed(1)}
-                  </span>
-                  <span>
-                    {team.raw_vectors.pitch.toFixed(1)} / {team.raw_vectors.velocity.toFixed(1)}
-                  </span>
+                {/* Team Name & Candidates */}
+                <div className="flex-1 min-w-0 pr-4">
+                  <div className="font-display font-extrabold text-base text-brand-dark truncate">
+                    {team.team_name}
+                  </div>
+                  {/* Candidate names or description */}
+                  <div className="text-xs text-slate-600 truncate mt-0.5 font-medium">
+                    {team.members_summary || team.description || `Team ID: ${team.external_id || team.team_id}`}
+                  </div>
+                  {/* Human readable decision explanation snippet */}
+                  {team.explanation && (
+                    <div className="text-[11px] text-slate-500 font-sans italic truncate mt-0.5">
+                      💡 {team.explanation}
+                    </div>
+                  )}
+                </div>
+
+                {/* Team Size */}
+                <div className="w-24 text-center hidden md:block font-mono text-xs text-slate-600 font-semibold">
+                  {team.team_size || 3} members
                 </div>
 
                 {/* Total Score */}
-                <div className="w-24 text-right">
-                  <div
-                    className={`font-tabular-score text-tabular-score font-extrabold ${
-                      isSelected
-                        ? 'text-primary-container'
-                        : isExcluded
-                        ? 'text-error'
-                        : 'text-on-surface'
-                    }`}
-                  >
-                    {team.total_score.toFixed(2)}
+                <div className="w-32 text-right pr-4">
+                  <div className="font-mono font-black text-lg text-brand-dark">
+                    {team.total_score != null ? Number(team.total_score).toFixed(1) : 'N/A'}
+                    <span className="text-xs font-normal text-slate-500 ml-0.5">/100</span>
                   </div>
-                  {team.delta_pts && (
-                    <span className="text-xs font-mono text-error font-bold">
-                      {team.delta_pts > 0 ? `+${team.delta_pts}` : team.delta_pts} pts
-                    </span>
+                  {team.total_score != null && (
+                    <div className="w-full bg-slate-200 rounded-full h-1.5 mt-1 overflow-hidden">
+                      <div
+                        className={`h-full ${
+                          isShortlisted ? 'bg-emerald-500' : isIneligible ? 'bg-rose-400' : 'bg-brand-blue'
+                        }`}
+                        style={{ width: `${Math.min(100, Math.max(0, team.total_score))}%` }}
+                      ></div>
+                    </div>
                   )}
                 </div>
 
-                {/* Status Flag */}
-                <div className="w-36 flex justify-end">
-                  {team.status_type === 'locked' && (
-                    <span className="px-2.5 py-1 rounded-full bg-[#10b981] text-on-primary border-2 border-[#0f172a] shadow-[2px_2px_0px_#0f172a] font-label-sm text-label-sm whitespace-nowrap font-black">
-                      {team.status}
+                {/* Status Badge */}
+                <div className="w-36 text-center">
+                  <span
+                    className={`px-3 py-1 rounded-full border border-[#0f172a] text-xs font-bold uppercase tracking-wide inline-flex items-center gap-1 shadow-[1px_1px_0px_#0f172a] ${
+                      isShortlisted
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : isIneligible
+                        ? 'bg-rose-100 text-rose-800'
+                        : 'bg-blue-100 text-blue-800'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-xs font-bold">
+                      {isShortlisted ? 'check_circle' : isIneligible ? 'cancel' : 'hourglass_bottom'}
                     </span>
-                  )}
-                  {team.status_type === 'solid' && (
-                    <span className="px-2.5 py-1 rounded-full bg-primary-container text-on-primary-container border-2 border-[#0f172a] shadow-[2px_2px_0px_#0f172a] font-label-sm text-label-sm whitespace-nowrap font-bold">
-                      {team.status}
-                    </span>
-                  )}
-                  {team.status_type === 'bubble' && (
-                    <span className="px-2.5 py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed border-2 border-[#0f172a] shadow-[2px_2px_0px_#0f172a] font-label-sm text-label-sm whitespace-nowrap font-extrabold flex items-center gap-1">
-                      <span>{team.status}</span>
-                    </span>
-                  )}
-                  {team.status_type === 'waitlist' && (
-                    <span className="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface border border-[#0f172a] font-label-sm text-label-sm whitespace-nowrap font-bold">
-                      {team.status}
-                    </span>
-                  )}
-                  {team.status_type === 'excluded' && (
-                    <span className="px-2 py-0.5 rounded-full bg-error text-on-error border border-[#0f172a] font-label-sm text-label-sm whitespace-nowrap font-bold">
-                      {team.status}
-                    </span>
-                  )}
+                    <span>{isShortlisted ? 'SHORTLISTED' : isIneligible ? 'INELIGIBLE' : 'WAITLISTED'}</span>
+                  </span>
+                </div>
+
+                {/* Action button */}
+                <div className="w-24 text-right">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectTeam(team);
+                    }}
+                    className="px-2.5 py-1 bg-white hover:bg-brand-yellow text-brand-dark rounded border border-[#0f172a] font-mono text-xs font-bold shadow-[1px_1px_0px_#0f172a] transition-all cursor-pointer"
+                  >
+                    Inspect
+                  </button>
                 </div>
               </div>
             </Fragment>
           );
         })}
-      </div>
-
-      {/* Table Footer Summary */}
-      <div className="bg-surface-container-low px-4 py-3 flex items-center justify-between font-label-sm text-label-sm text-on-surface-variant border-t-2 border-[#0f172a]">
-        <span className="font-mono">
-          Displaying window: Ranks #1 - #{teams[teams.length - 1]?.rank || 42} (Indexed consensus cache)
-        </span>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            disabled={page <= 1}
-            onClick={() => onPageChange(page - 1)}
-            className="px-2 py-1 bg-surface-container rounded border border-[#0f172a] hover:bg-surface-container-high font-bold cursor-pointer disabled:opacity-50"
-          >
-            ← Prev
-          </button>
-          <span className="font-mono font-bold text-on-surface">
-            Page {page} of {totalPages}
-          </span>
-          <button
-            type="button"
-            disabled={page >= totalPages}
-            onClick={() => onPageChange(page + 1)}
-            className="px-2 py-1 bg-surface-container rounded border border-[#0f172a] hover:bg-surface-container-high font-bold cursor-pointer disabled:opacity-50"
-          >
-            Next →
-          </button>
-        </div>
       </div>
     </div>
   );

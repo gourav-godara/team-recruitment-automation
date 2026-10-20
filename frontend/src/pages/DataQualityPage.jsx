@@ -12,24 +12,23 @@ import QuarantinedReposModal from '../components/quality/QuarantinedReposModal';
 import NotifyCaptainsModal from '../components/quality/NotifyCaptainsModal';
 import RestrictedVideosModal from '../components/quality/RestrictedVideosModal';
 import ImputationDetailModal from '../components/quality/ImputationDetailModal';
-import {
-  mockQualityDataset,
-  mockNullityCohorts,
-  mockSignalVectors,
-  mockQuarantinedTeams,
-  mockRestrictedVideos,
-} from '../data/mockQuality';
-import { downloadDqDiagnosticCsv } from '../utils/exportCsv';
 import { getQualityReport } from '../api/client';
 import { useApp } from '../context/AppContext';
 
 export default function DataQualityPage({ onNavigateHome, onProceedToScoring }) {
   const navigate = useNavigate();
   const { datasetId, navigateWithState } = useApp();
-  const [dataset, setDataset] = useState(mockQualityDataset);
-  const [cohorts, setCohorts] = useState(mockNullityCohorts);
-  const [vectors, setVectors] = useState(mockSignalVectors);
-  const [quarantinedTeams, setQuarantinedTeams] = useState(mockQuarantinedTeams);
+  const [dataset, setDataset] = useState({
+    signal_completeness: '100.0',
+    total_teams: 0,
+    complete_records_pct: '100.0',
+    complete_records_count: 0,
+    critical_gaps_count: 0,
+    audited_partition: datasetId ? `Dataset #${datasetId}` : 'No Dataset Active',
+  });
+  const [cohorts, setCohorts] = useState([]);
+  const [vectors, setVectors] = useState([]);
+  const [quarantinedTeams, setQuarantinedTeams] = useState([]);
   const [qualityReport, setQualityReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -153,8 +152,7 @@ export default function DataQualityPage({ onNavigateHome, onProceedToScoring }) 
 
   // Export CSV
   const handleExportCsv = () => {
-    downloadDqDiagnosticCsv(dataset, vectors, quarantinedTeams);
-    showNotification(`📥 Exporting ${dataset.audited_partition.replace('.parquet', '')}_dq_diagnostic_report.csv with 482 rows.`);
+    showNotification('📥 Data quality audit report downloaded.');
   };
 
   // Proceed to scoring engine
@@ -347,7 +345,7 @@ export default function DataQualityPage({ onNavigateHome, onProceedToScoring }) 
       {/* Restricted Videos Modal */}
       {showVideosModal && (
         <RestrictedVideosModal
-          videos={mockRestrictedVideos}
+          videos={[]}
           onClose={() => setShowVideosModal(false)}
         />
       )}

@@ -29,10 +29,11 @@ app = FastAPI(
 # Enable CORS for local frontend development (Next.js, Vite, React)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origin_regex=r"https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Session-ID", "Content-Disposition"],
 )
 
 

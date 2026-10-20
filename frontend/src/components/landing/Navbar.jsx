@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
 
 export default function Navbar({ onDropCsvClick }) {
-
   return (
     <header className="fixed top-3 left-0 right-0 z-50 px-4 max-w-7xl mx-auto">
       <div className="bg-white retro-border shadow-pop-lg rounded-2xl px-4 py-2.5 flex items-center justify-between gap-3">
@@ -16,60 +15,54 @@ export default function Navbar({ onDropCsvClick }) {
                 ShortlistIQ
               </span>
               <span className="text-[10px] font-mono font-bold text-brand-blue uppercase tracking-wider">
-                HACKATHON JURY DECK
+                TEAM RECRUITMENT AUTOMATION
               </span>
             </div>
           </Link>
           <div className="hidden md:flex items-center gap-1.5">
             <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-brand-green/30 text-emerald-800 retro-border shadow-pop-sm">
-              ● v2.4 LIVE
+              ● DECISION ENGINE READY
             </span>
-            <Link
-              to="/schema-mapper"
-              className="hidden lg:inline-flex px-2 py-0.5 rounded-full text-xs font-bold bg-secondary-fixed text-on-secondary-fixed retro-border shadow-pop-sm cursor-pointer hover:bg-secondary-fixed-dim"
-            >
-              STAGE 01 SCHEMA MAPPER →
-            </Link>
           </div>
         </div>
 
-        {/* Center Links / Tabs */}
-        <nav className="hidden xl:flex items-center gap-2 font-display font-semibold text-sm">
+        {/* Center Links / Workflow Steps */}
+        <nav className="hidden lg:flex items-center gap-1 font-display font-semibold text-sm">
           <Link
             to="/schema-mapper"
-            className="px-3 py-1.5 rounded-xl bg-brand-blue text-white retro-border shadow-pop-sm transition-transform hover:-translate-y-0.5 cursor-pointer font-bold"
+            className="px-3 py-1.5 rounded-xl hover:bg-brand-yellow/50 retro-border border-transparent hover:border-brand-dark hover:shadow-pop-sm transition-all"
           >
-            Ingest Arena (Stage 1)
+            1. Schema
           </Link>
-          <a
-            className="px-3 py-1.5 rounded-xl hover:bg-brand-yellow retro-border border-transparent hover:border-brand-dark hover:shadow-pop-sm transition-all"
-            href="#pipeline-stages"
+          <Link
+            to="/data-quality"
+            className="px-3 py-1.5 rounded-xl hover:bg-brand-yellow/50 retro-border border-transparent hover:border-brand-dark hover:shadow-pop-sm transition-all"
           >
-            7-Stage Levels
-          </a>
-          <a
-            className="px-3 py-1.5 rounded-xl hover:bg-brand-yellow retro-border border-transparent hover:border-brand-dark hover:shadow-pop-sm transition-all"
-            href="#live-console"
+            2. Data Quality
+          </Link>
+          <Link
+            to="/scoring-engine"
+            className="px-3 py-1.5 rounded-xl hover:bg-brand-yellow/50 retro-border border-transparent hover:border-brand-dark hover:shadow-pop-sm transition-all"
           >
-            Live Top 10 Roster
-          </a>
-          <a
-            className="px-3 py-1.5 rounded-xl hover:bg-brand-yellow retro-border border-transparent hover:border-brand-dark hover:shadow-pop-sm transition-all"
-            href="#comparison"
+            3. Scoring Rules
+          </Link>
+          <Link
+            to="/ranked-results"
+            className="px-3 py-1.5 rounded-xl bg-brand-yellow text-brand-dark retro-border shadow-pop-sm transition-transform hover:-translate-y-0.5 font-bold"
           >
-            Sheets vs Machine
-          </a>
+            4. Shortlist Leaderboard
+          </Link>
         </nav>
 
-        {/* Action Buttons */}
+        {/* Action Button */}
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={onDropCsvClick}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand-blue text-white font-display font-bold text-xs md:text-sm retro-border shadow-pop hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-pop-hover active:shadow-none transition-all cursor-pointer"
           >
-            <span className="material-symbols-outlined text-sm font-bold">file_upload</span>
-            <span>Upload Registrations</span>
+            <span className="material-symbols-outlined text-sm font-bold">upload_file</span>
+            <span>Upload CSV</span>
           </button>
         </div>
       </div>
