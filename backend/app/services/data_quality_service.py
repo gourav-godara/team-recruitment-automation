@@ -64,8 +64,8 @@ class DataQualityService:
         cls,
         teams: List[Team],
         dataset_id: Optional[str] = None,
-        min_team_size: int = 2,
-        max_team_size: int = 4,
+        min_team_size: int = 1,
+        max_team_size: int = 10,
     ) -> DataQualityReport:
         """Generates a complete data quality report directly from domain Team objects."""
         total_teams = len(teams)
@@ -231,8 +231,8 @@ class DataQualityService:
         cls,
         db: Any,
         dataset_id: Union[int, str],
-        min_team_size: int = 2,
-        max_team_size: int = 4,
+        min_team_size: int = 1,
+        max_team_size: int = 10,
     ) -> Optional[DataQualityReport]:
         """Analyzes a persisted dataset directly from Sushmita's PostgreSQL schema."""
         try:

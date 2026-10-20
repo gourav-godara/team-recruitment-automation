@@ -1,15 +1,18 @@
 import math
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from backend.app.schemas.scoring import (
     AggregationType,
     CriterionDetail,
+    Member,
+    MemberScoreResult,
     MissingDataPolicy,
+    RuleScope,
     ScoringConfig,
     SignalState,
     SignalValue,
     Team,
 )
-from backend.app.services.team_aggregation import aggregate_team_signal
+from backend.app.services.team_aggregation import aggregate_team_signal, evaluate_operator
 
 
 def calculate_team_score(
@@ -72,6 +75,13 @@ def calculate_team_score(
             if sig.status in (SignalState.PRESENT, SignalState.FLAGGED) and sig.value is not None:
                 if isinstance(sig.value, (list, tuple, set)):
                     sig.value = float(len(sig.value))
+                if isinstance(sig.value, str):
+                    try:
+                        sig.value = float(sig.value)
+                    except ValueError:
+                        import re
+                        items = [s.strip() for s in re.split(r"[,;/|]+", sig.value) if s.strip()]
+                        sig.value = float(len(items)) if items else 0.0
                 if isinstance(sig.value, bool):
                     raise ValueError(
                         f"Criterion '{criterion}' score for team '{team.team_id}' must be numeric, not boolean "
@@ -199,3 +209,122 @@ def calculate_team_score(
         )
 
     return final_score, breakdown, states, details, missing_notes, flags
+
+
+def calculate_member_score(
+    member: Member,
+    config: ScoringConfig,
+) -> MemberScoreResult:
+    """Calculates an individual candidate's weighted composite score and criterion breakdown."""
+    weights = config.weights
+    breakdown: Dict[str, Optional[float]] = {}
+    raw_values: Dict[str, Optional[Any]] = {}
+    states: Dict[str, SignalState] = {}
+    warnings: List[str] = []
+    missing_fields: List[str] = []
+
+    available_weight = 0.0
+    weighted_points = 0.0
+
+    for criterion, weight in weights.items():
+        sig = member.signals.get(criterion)
+        if sig is None:
+            sig = SignalValue(value=None, status=SignalState.MISSING)
+
+        states[criterion] = sig.status
+        raw_values[criterion] = sig.value
+
+        if sig.status == SignalState.MISSING:
+            missing_fields.append(criterion)
+            breakdown[criterion] = None
+        elif sig.status == SignalState.INVALID:
+            warnings.append(f"Invalid data for '{criterion}': {sig.reason or 'Unparseable'}")
+            breakdown[criterion] = None
+        elif sig.status in (SignalState.PRESENT, SignalState.FLAGGED) and sig.value is not None:
+            val = sig.value
+            if isinstance(val, (list, tuple, set)):
+                val = float(len(val))
+            elif isinstance(val, str):
+                try:
+                    val = float(val)
+                except ValueError:
+                    import re
+                    tokens = [s.strip() for s in re.split(r"[,;/|]+", val) if s.strip()]
+                    val = float(len(tokens)) if tokens else 0.0
+
+            if isinstance(val, (int, float)) and math.isfinite(val):
+                val_bounded = max(0.0, min(100.0, float(val)))
+                breakdown[criterion] = val_bounded
+                weighted_points += val_bounded * weight
+                available_weight += weight
+            else:
+                breakdown[criterion] = None
+
+    member_score = (
+        round(weighted_points / available_weight, 2)
+        if available_weight > 0.0
+        else None
+    )
+
+    # Member links & attributes
+    gh_url = member.signals.get("github_url").value if "github_url" in member.signals and member.signals["github_url"].value else None
+    gh_user = member.signals.get("github_username").value if "github_username" in member.signals and member.signals["github_username"].value else None
+    li_url = member.signals.get("linkedin_url").value if "linkedin_url" in member.signals and member.signals["linkedin_url"].value else None
+    pf_url = member.signals.get("portfolio_url").value if "portfolio_url" in member.signals and member.signals["portfolio_url"].value else None
+    email = member.signals.get("email").value if "email" in member.signals and member.signals["email"].value else None
+    exp_sig = member.signals.get("experience_years")
+    exp_years = float(exp_sig.value) if exp_sig and exp_sig.value is not None and isinstance(exp_sig.value, (int, float)) else None
+
+    # Determine experience source
+    exp_source = "Declared in CSV" if exp_years is not None and "experience_years" not in missing_fields else "Inferred from Skills/Role"
+    if exp_years is None:
+        exp_source = "Not provided"
+
+    # Skills list
+    skills_sig = member.signals.get("skills")
+    skills_list: List[str] = []
+    if skills_sig and skills_sig.value:
+        if isinstance(skills_sig.value, list):
+            skills_list = [str(s) for s in skills_sig.value]
+        elif isinstance(skills_sig.value, str):
+            import re
+            skills_list = [s.strip() for s in re.split(r"[,;/|]+", skills_sig.value) if s.strip()]
+
+    # Individual eligibility rules
+    failed_rules = []
+    for r in config.eligibility_rules:
+        if r.scope == RuleScope.MEMBER:
+            sig = member.signals.get(r.field)
+            val = sig.value if sig and sig.status != SignalState.MISSING else None
+            if val is None:
+                if r.missing_policy == MissingDataPolicy.REQUIRE:
+                    failed_rules.append(f"Missing required field '{r.field}'")
+            else:
+                passed = evaluate_operator(val, r.operator, r.value)
+                if not passed:
+                    failed_rules.append(f"{r.name}: observed '{val}' (requires {r.operator.value} {r.value})")
+
+    is_eligible = len(failed_rules) == 0
+    elig_status = "ELIGIBLE" if is_eligible else "INELIGIBLE"
+
+    return MemberScoreResult(
+        member_id=member.member_id,
+        name=member.name,
+        score=member_score,
+        score_breakdown=breakdown,
+        raw_values=raw_values,
+        criterion_states=states,
+        is_eligible=is_eligible,
+        eligibility_status=elig_status,
+        failed_rules=failed_rules,
+        github_url=gh_url,
+        github_username=gh_user,
+        linkedin_url=li_url,
+        portfolio_url=pf_url,
+        email=email,
+        experience_years=exp_years,
+        experience_source=exp_source,
+        skills=skills_list,
+        missing_fields=missing_fields,
+        warnings=warnings,
+    )

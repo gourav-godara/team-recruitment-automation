@@ -229,12 +229,24 @@ class RuleConfig(BaseModel):
         return self
 
 
+class AffectedMemberDetail(BaseModel):
+    member_id: str
+    member_name: Optional[str] = None
+    observed_value: Optional[Any] = None
+    reason: str
+
+
 class RuleResult(BaseModel):
     rule_name: str
     status: RuleStatus
     reason: Optional[str] = None
     field: str
     evaluated_value: Optional[Any] = None
+    expected_condition: Optional[str] = None
+    operator: Optional[str] = None
+    threshold: Optional[Any] = None
+    scope: Optional[str] = None
+    affected_members: List[AffectedMemberDetail] = Field(default_factory=list)
     available_count: int = 0
     missing_count: int = 0
     invalid_count: int = 0
@@ -309,6 +321,28 @@ class CriterionDetail(BaseModel):
     note: Optional[str] = None
 
 
+class MemberScoreResult(BaseModel):
+    member_id: str
+    name: Optional[str] = None
+    score: Optional[float] = None  # Individual weighted score [0, 100]
+    score_breakdown: Dict[str, Optional[float]] = Field(default_factory=dict)
+    raw_values: Dict[str, Optional[Any]] = Field(default_factory=dict)
+    criterion_states: Dict[str, SignalState] = Field(default_factory=dict)
+    is_eligible: bool = True
+    eligibility_status: str = "ELIGIBLE"  # ELIGIBLE, INELIGIBLE, INSUFFICIENT_DATA
+    failed_rules: List[str] = Field(default_factory=list)
+    github_url: Optional[str] = None
+    github_username: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    portfolio_url: Optional[str] = None
+    email: Optional[str] = None
+    experience_years: Optional[float] = None
+    experience_source: Optional[str] = None  # e.g. "Declared in CSV", "Inferred from Skills", "Not provided"
+    skills: List[str] = Field(default_factory=list)
+    missing_fields: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
 class TeamScoreResult(BaseModel):
     team_id: str
     name: Optional[str] = None
@@ -320,6 +354,7 @@ class TeamScoreResult(BaseModel):
     score_breakdown: Dict[str, Optional[float]] = Field(default_factory=dict)
     criterion_states: Dict[str, SignalState] = Field(default_factory=dict)
     detailed_contributions: List[CriterionDetail] = Field(default_factory=list)
+    member_scores: List[MemberScoreResult] = Field(default_factory=list)
     reasons: List[str] = Field(default_factory=list)
     missing_data: List[str] = Field(default_factory=list)
     flags: List[str] = Field(default_factory=list)

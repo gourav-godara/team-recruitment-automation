@@ -24,6 +24,24 @@ from backend.app.models.entities import (
 )
 
 
+def normalize_gender_code(val: Any) -> Optional[str]:
+    """Normalizes gender to fit within PostgreSQL CHAR(1) column constraint ('F', 'M', 'O', 'N')."""
+    if val is None:
+        return None
+    s = str(val).strip().upper()
+    if not s:
+        return None
+    if s.startswith("F"):
+        return "F"
+    if s.startswith("M"):
+        return "M"
+    if s.startswith("O"):
+        return "O"
+    if s.startswith("N"):
+        return "N"
+    return s[:1]
+
+
 # Standard criteria seeds matching decision engine criteria
 STANDARD_CRITERIA = [
     {
@@ -176,11 +194,17 @@ class ImportRepository:
 
             # 3. Iterate through members
             for m in t.members:
+                raw_gender = None
+                if isinstance(m.extra_data, dict):
+                    raw_gender = m.extra_data.get("gender") or m.extra_data.get("declared_gender")
+                if raw_gender is None and hasattr(m, "gender"):
+                    raw_gender = getattr(m, "gender")
+
                 member_row = Member(
                     team_id=team_row.id,
                     full_name=m.name,
                     email=m.email,
-                    gender=m.extra_data.get("gender") if isinstance(m.extra_data, dict) else None,
+                    gender=normalize_gender_code(raw_gender),
                     resume_url=m.extra_data.get("resume_url") if isinstance(m.extra_data, dict) else None,
                     github_url=m.github_url,
                     linkedin_url=m.linkedin_url,
@@ -330,6 +354,18 @@ class ImportRepository:
                     elif sig.status in ("missing", "fetch_failed"):
                         missing_fields.append(sig.criterion_key)
 
+                gender_val = mr.gender
+                if gender_val:
+                    g_up = str(gender_val).strip().upper()
+                    if g_up == "F":
+                        gender_val = "Female"
+                    elif g_up == "M":
+                        gender_val = "Male"
+                    elif g_up == "O":
+                        gender_val = "Other"
+                    elif g_up == "N":
+                        gender_val = "Non-binary"
+
                 member = MemberData(
                     id=str(mr.id),
                     name=mr.full_name,
@@ -342,7 +378,7 @@ class ImportRepository:
                     experience_years=exp_years,
                     education=None,
                     missing_fields=list(set(missing_fields)),
-                    extra_data={"gender": mr.gender, "resume_url": mr.resume_url},
+                    extra_data={"gender": gender_val, "declared_gender": gender_val, "resume_url": mr.resume_url},
                     is_valid=True,
                 )
                 members.append(member)

@@ -233,6 +233,7 @@ def get_import(
             )
 
     teams = ImportRepository.get_dataset_teams(db, dataset.id)
+    total_records = sum(len(t.members) if getattr(t, "members", None) else (getattr(t, "team_size", 0) or 1) for t in teams)
 
     return {
         "import_id": dataset.id,
@@ -243,6 +244,7 @@ def get_import(
         "file_hash": dataset.file_hash,
         "dataset_hash": dataset.file_hash,
         "total_teams": dataset.total_teams,
+        "total_records": total_records,
         "column_mapping": dataset.column_mapping,
         "teams": [t.to_dict() for t in teams],
         "uploaded_at": dataset.uploaded_at.isoformat() if hasattr(dataset.uploaded_at, "isoformat") else str(dataset.uploaded_at),

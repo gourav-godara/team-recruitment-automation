@@ -1,0 +1,9 @@
+Rank,Team ID,Team Name,Status,Score,Disqualification / Flags
+1,T108,Code Catalysts,SHORTLISTED,65.83,
+2,T105,Cyber Sentinels,SHORTLISTED,62.50,
+3,T101,Binary Bosses,SHORTLISTED,60.83,
+4,T102,Neural Ninjas,SHORTLISTED,59.17,
+5,T104,Pixel Pioneers,SHORTLISTED,55.00,
+N/A,T103,Byte Builders,REJECTED,,Eligibility Rule Failure (Diversity Requirement (≥ 1 Female Member)): Failed requirement: Only 0 qualifying member(s) found (minimum required is 1).
+N/A,T106,Solo Hacker,REJECTED,,"Eligibility Rule Failure (Team Size (2-4 Members)): Team size 1 is outside permitted range [2, 4]. Team is too small. | Eligibility Rule Failure (Diversity Requirement (≥ 1 Female Member)): Failed requirement: Only 0 qualifying member(s) found (minimum required is 1)."
+N/A,T107,Mega Syndicate,REJECTED,,"Eligibility Rule Failure (Team Size (2-4 Members)): Team size 6 is outside permitted range [2, 4]. Team is too large."

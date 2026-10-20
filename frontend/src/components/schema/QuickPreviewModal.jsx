@@ -1,15 +1,13 @@
 import { useState } from 'react';
-import { mockPreviewRows } from '../../data/mockSchema';
 
-export default function QuickPreviewModal({ onClose }) {
+export default function QuickPreviewModal({ onClose, rows = [] }) {
   const [searchTerm, setSearchTerm] = useState('');
 
-  const filtered = mockPreviewRows.filter((r) => {
+  const filtered = rows.filter((r) => {
     const q = searchTerm.toLowerCase();
     return (
-      r.team_name.toLowerCase().includes(q) ||
-      r.track.toLowerCase().includes(q) ||
-      r.external_id.toLowerCase().includes(q)
+      (r.team_name && r.team_name.toLowerCase().includes(q)) ||
+      (r.external_id && r.external_id.toLowerCase().includes(q))
     );
   });
 
@@ -17,17 +15,17 @@ export default function QuickPreviewModal({ onClose }) {
     <div className="fixed inset-0 z-50 bg-[#0f172a]/60 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-surface-container-lowest retro-border-thick rounded-2xl w-full max-w-5xl max-h-[85vh] flex flex-col shadow-[8px_8px_0px_#0f172a] overflow-hidden animate-in fade-in duration-200">
         {/* Modal Header */}
-        <div className="p-4 bg-secondary-fixed border-b-2 border-[#0f172a] flex items-center justify-between">
+        <div className="p-4 bg-brand-yellow border-b-2 border-[#0f172a] flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-2xl font-bold text-on-surface">
               visibility
             </span>
             <div>
               <h3 className="font-headline-sm text-headline-sm text-on-surface font-extrabold leading-tight">
-                Quick Preview Specimen (First 50 Rows)
+                Candidate Dataset Preview
               </h3>
               <p className="font-mono text-xs text-on-surface font-semibold">
-                Source: submissions_final_v3.csv (482 total rows) • Raw CSV Stream
+                Uploaded registration records
               </p>
             </div>
           </div>
@@ -50,71 +48,43 @@ export default function QuickPreviewModal({ onClose }) {
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search sample preview rows..."
-              className="w-full bg-white border-2 border-[#0f172a] rounded-md pl-9 pr-3 py-1 font-body-sm text-xs focus:outline-none focus:shadow-[2px_2px_0px_#2563eb]"
+              placeholder="Search preview records..."
+              className="w-full pl-9 pr-3 py-1.5 bg-surface-container-lowest rounded-lg border-2 border-[#0f172a] font-mono text-xs focus:outline-none"
             />
           </div>
-          <span className="font-mono text-xs text-on-surface-variant font-bold">
-            Showing {filtered.length} of 50 sampled rows
+          <span className="font-mono text-xs font-bold text-slate-500">
+            {filtered.length} records found
           </span>
         </div>
 
-        {/* Scrollable Table */}
-        <div className="overflow-x-auto overflow-y-auto flex-1 p-2">
-          <table className="w-full text-left border-collapse text-xs font-mono">
-            <thead>
-              <tr className="bg-[#0f172a] text-white uppercase tracking-wider">
-                <th className="py-2 px-3 border-r border-slate-700">#</th>
-                <th className="py-2 px-3 border-r border-slate-700">Submission ID</th>
-                <th className="py-2 px-3 border-r border-slate-700">Project Title</th>
-                <th className="py-2 px-3 border-r border-slate-700">Primary Category</th>
-                <th className="py-2 px-3 border-r border-slate-700">Repo Link</th>
-                <th className="py-2 px-3 border-r border-slate-700">Prelim Tech</th>
-                <th className="py-2 px-3 border-r border-slate-700">Commits</th>
-                <th className="py-2 px-3">Team Size</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y border-b-2 border-[#0f172a] bg-white">
-              {filtered.map((row) => (
-                <tr key={row.id} className="hover:bg-[#fef08a] transition-colors">
-                  <td className="py-2 px-3 border-r border-slate-200 font-bold">{row.id}</td>
-                  <td className="py-2 px-3 border-r border-slate-200 text-primary font-bold">
-                    {row.external_id}
-                  </td>
-                  <td className="py-2 px-3 border-r border-slate-200 font-bold text-on-surface">
-                    {row.team_name}
-                  </td>
-                  <td className="py-2 px-3 border-r border-slate-200">
-                    <span className="px-2 py-0.5 rounded-full bg-surface-container-high border border-[#0f172a] text-[10px] font-bold">
-                      {row.track}
-                    </span>
-                  </td>
-                  <td className="py-2 px-3 border-r border-slate-200 text-slate-600 truncate max-w-[180px]">
-                    {row.repo_link}
-                  </td>
-                  <td className="py-2 px-3 border-r border-slate-200 font-bold text-emerald-700">
-                    {row.tech_score}
-                  </td>
-                  <td className="py-2 px-3 border-r border-slate-200 font-bold">{row.commits}</td>
-                  <td className="py-2 px-3 font-bold">{row.team_size} members</td>
+        {/* Table content */}
+        <div className="overflow-y-auto p-4 flex-1">
+          {filtered.length === 0 ? (
+            <div className="text-center py-12 text-slate-500 font-mono text-xs">
+              No matching records in preview.
+            </div>
+          ) : (
+            <table className="w-full font-mono text-xs text-left border-collapse">
+              <thead>
+                <tr className="border-b-2 border-[#0f172a] bg-slate-100">
+                  <th className="p-2 font-bold">Team Name</th>
+                  <th className="p-2 font-bold">Candidate</th>
+                  <th className="p-2 font-bold">Email</th>
+                  <th className="p-2 font-bold">Experience</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Modal Footer */}
-        <div className="p-3 bg-surface-container-low border-t-2 border-[#0f172a] flex items-center justify-between text-xs font-mono">
-          <span className="text-on-surface-variant font-bold">
-            Parsed cleanly via WebAssembly SIMD CSV Lexer. Zero delimiter drift.
-          </span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-1.5 rounded bg-primary text-white font-bold border-2 border-[#0f172a] shadow-[2px_2px_0px_#0f172a] hover:bg-primary-container cursor-pointer"
-          >
-            Close Preview
-          </button>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {filtered.map((r, idx) => (
+                  <tr key={idx} className="hover:bg-yellow-50">
+                    <td className="p-2 font-bold text-brand-dark">{r.team_name}</td>
+                    <td className="p-2">{r.name || r.candidate_name || '--'}</td>
+                    <td className="p-2">{r.email || '--'}</td>
+                    <td className="p-2">{r.experience_years ? `${r.experience_years} yrs` : '--'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>
