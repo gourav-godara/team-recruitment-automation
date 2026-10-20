@@ -55,6 +55,7 @@ class EvaluationService:
         config: ScoringConfig,
         dataset_id: Union[int, str],
         config_id: Optional[Union[int, str]] = None,
+        session_id: Optional[str] = None,
     ) -> ScoringEvaluationResponse:
         """Executes the Core Decision Engine pipeline and persists the evaluation run and results into runs,
         run_results, run_score_details, and run_rule_results.
@@ -109,6 +110,7 @@ class EvaluationService:
         run_row = Run(
             dataset_id=int(dataset_id),
             config_id=cfg_record.id,
+            session_id=session_id,
             config_snapshot=config_snapshot_payload,
             top_x=top_x_val,
             teams_total=response.total_teams,
@@ -247,12 +249,15 @@ class EvaluationService:
             table_name="runs",
             record_id=run_row.id,
             action="insert",
+            session_id=session_id,
+            actor_type="anonymous",
             new_values={
                 "run_id": run_row.id,
                 "dataset_id": run_row.dataset_id,
                 "teams_total": run_row.teams_total,
                 "teams_shortlisted": run_row.teams_shortlisted,
                 "result_hash": run_row.result_hash,
+                "session_id": session_id,
             },
             changed_at=datetime.now(timezone.utc),
         )
@@ -261,6 +266,13 @@ class EvaluationService:
         # Update the run_id in the response to the integer run ID (as string) for frontend consistency
         response.run_id = str(run_row.id)
         return response
+
+    @classmethod
+    def list_session_runs(cls, db: Any, session_id: str) -> List[Run]:
+        """Lists all evaluation runs belonging to an anonymous session."""
+        if not session_id or not hasattr(db, "query"):
+            return []
+        return db.query(Run).filter_by(session_id=session_id).order_by(Run.run_at.desc()).all()
 
     @classmethod
     def get_saved_evaluation(

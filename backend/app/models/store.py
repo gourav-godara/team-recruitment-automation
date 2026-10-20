@@ -37,8 +37,33 @@ class Query(Generic[T]):
                 filtered.append(e)
         return Query(filtered)
 
-    def order_by(self, key_func: Callable[[T], Any], reverse: bool = False) -> "Query[T]":
-        return Query(sorted(self._entities, key=key_func, reverse=reverse))
+    def order_by(self, *criterion, **kwargs) -> "Query[T]":
+        if not criterion:
+            return self
+
+        crit = criterion[0]
+        reverse = kwargs.get("reverse", False)
+
+        if callable(crit):
+            sort_key = crit
+        else:
+            col_name = getattr(crit, "name", None)
+            if hasattr(crit, "element"):
+                col_name = getattr(crit.element, "name", col_name)
+                if "DESC" in str(crit).upper():
+                    reverse = True
+            elif "DESC" in str(crit).upper():
+                reverse = True
+
+            if col_name:
+                sort_key = lambda e: (getattr(e, col_name, None) is not None, getattr(e, col_name, None))
+            else:
+                sort_key = lambda e: getattr(e, "id", 0) or 0
+
+        try:
+            return Query(sorted(self._entities, key=sort_key, reverse=reverse))
+        except Exception:
+            return self
 
     def all(self) -> List[T]:
         return list(self._entities)

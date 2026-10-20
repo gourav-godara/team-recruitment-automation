@@ -1,15 +1,20 @@
 """API router for importing candidate registration datasets and retrieving import records.
 
-Integrates with Sushmita's 'datasets', 'teams', 'members', and 'member_signals' tables.
+Supports public, anonymous, no-login operation with cryptographic session isolation,
+upload size limits, path-traversal prevention, and data quality inspection.
 """
 
 import json
+import os
+import re
 from typing import Any, Dict, List, Optional, Union
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
+from backend.app.core.config import settings
 from backend.app.core.database import get_db
 from backend.app.core.security import DEV_USER_ID, get_current_user_id
+from backend.app.core.session import attach_session_cookie, get_session_id
 from backend.app.models.entities import Campaign
 from backend.app.schemas.data_quality import DataQualityReport
 from backend.app.services.data_quality_service import DataQualityService
@@ -20,21 +25,42 @@ from schemas.config import ImportConfig
 router = APIRouter()
 
 
+def sanitize_filename(filename: Optional[str]) -> str:
+    """Sanitizes filename to prevent directory traversal and injection attacks."""
+    if not filename:
+        return "registrations.csv"
+    # Extract only the base name (strip directory components)
+    clean_name = os.path.basename(filename)
+    # Strip dangerous characters
+    clean_name = re.sub(r"[^A-Za-z0-9_.\- ]", "_", clean_name).strip()
+    if not clean_name or clean_name.startswith("."):
+        clean_name = "registrations.csv"
+    return clean_name
+
+
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,
-    summary="Upload and validate a CSV or JSON candidate registration file",
+    summary="Upload and validate a CSV or JSON candidate registration file (No Login Required)",
 )
 async def upload_import(
     request: Request,
+    response: Response,
     filename: Optional[str] = Query(None, description="Original filename (e.g., registrations.csv)"),
     format_hint: Optional[str] = Query(None, description="Explicit format override: 'csv' or 'json'"),
     campaign_id: Optional[int] = Query(None, description="Optional associated campaign ID (integer)"),
     persist: bool = Query(True, description="Whether to persist valid teams to the database"),
     db: Any = Depends(get_db),
+    session_id: str = Depends(get_session_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ) -> Dict[str, Any]:
-    """Imports registration data from request body (supporting raw CSV text, JSON, or multipart files)."""
+    """Imports candidate registration data from request body.
+
+    No authentication or user account required. Automatically associates uploaded data with an
+    anonymous session token for continuity and isolation.
+    """
+    attach_session_cookie(response, session_id, request)
+
     if campaign_id is not None:
         campaign = db.query(Campaign).filter_by(id=campaign_id).first()
         if not campaign:
@@ -42,7 +68,8 @@ async def upload_import(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail={"error": "Campaign Not Found", "message": f"Campaign '{campaign_id}' does not exist."},
             )
-        if current_user_id != DEV_USER_ID and campaign.owner_id != current_user_id:
+        # If campaign has an authenticated owner, verify ownership
+        if campaign.owner_id is not None and current_user_id != DEV_USER_ID and campaign.owner_id != current_user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={"error": "Access Forbidden", "message": "You cannot upload datasets to another user's campaign."},
@@ -55,13 +82,26 @@ async def upload_import(
             detail={"error": "Empty File", "message": "Uploaded file or content is empty."},
         )
 
-    # Detect filename from headers if not explicitly given in query param
+    # 1. Enforce upload size limit (e.g. 10MB)
+    max_bytes = getattr(settings, "MAX_UPLOAD_SIZE_BYTES", 10 * 1024 * 1024)
+    if len(raw_bytes) > max_bytes:
+        raise HTTPException(
+            status_code=getattr(status, "HTTP_413_CONTENT_TOO_LARGE", 413),
+            detail={
+                "error": "File Too Large",
+                "message": f"File size ({len(raw_bytes)} bytes) exceeds max upload limit of {max_bytes // (1024 * 1024)}MB.",
+            },
+        )
+
+    # 2. Detect and sanitize filename from headers if not given as query param
     if not filename:
         content_disp = request.headers.get("content-disposition", "")
         if "filename=" in content_disp:
             parts = content_disp.split("filename=")
             if len(parts) > 1:
                 filename = parts[1].strip('"\'; ')
+
+    filename = sanitize_filename(filename)
 
     content_type = request.headers.get("content-type", "")
     if not format_hint:
@@ -94,7 +134,7 @@ async def upload_import(
             if isinstance(parsed_json, dict) and "data" in parsed_json and isinstance(parsed_json["data"], str):
                 clean_bytes = parsed_json["data"].encode("utf-8")
                 if "filename" in parsed_json and not filename:
-                    filename = parsed_json["filename"]
+                    filename = sanitize_filename(parsed_json["filename"])
                 if "format" in parsed_json and not format_hint:
                     format_hint = parsed_json["format"]
         except Exception:
@@ -128,6 +168,7 @@ async def upload_import(
                 filename=filename,
                 file_format=file_fmt,
                 campaign_id=campaign_id,
+                session_id=session_id,
             )
             dataset_id = dataset.id
             file_hash = dataset.file_hash
@@ -140,6 +181,7 @@ async def upload_import(
     return {
         "status": "success",
         "import_id": dataset_id,
+        "session_id": session_id,
         "dataset_hash": file_hash,
         "filename": filename,
         "total_records": import_result.total_records,
@@ -159,10 +201,15 @@ async def upload_import(
 )
 def get_import(
     import_id: str,
+    request: Request,
+    response: Response,
     db: Any = Depends(get_db),
+    session_id: str = Depends(get_session_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ) -> Dict[str, Any]:
-    """Retrieves an imported dataset and its reconstructed teams by integer or string ID."""
+    """Retrieves an imported dataset and its reconstructed teams with anonymous session verification."""
+    attach_session_cookie(response, session_id, request)
+
     dataset = ImportRepository.get_dataset_by_id(db, import_id)
     if not dataset:
         raise HTTPException(
@@ -170,9 +217,16 @@ def get_import(
             detail={"error": "Dataset Not Found", "message": f"No dataset found with id '{import_id}'"},
         )
 
+    # Anonymous Session Isolation: if dataset has a session_id, caller's session_id must match
+    if getattr(dataset, "session_id", None) and dataset.session_id != session_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Dataset Not Found", "message": f"No dataset found with id '{import_id}'"},
+        )
+
     if dataset.campaign_id is not None:
         campaign = db.query(Campaign).filter_by(id=dataset.campaign_id).first()
-        if campaign and current_user_id != DEV_USER_ID and campaign.owner_id != current_user_id:
+        if campaign and campaign.owner_id is not None and current_user_id != DEV_USER_ID and campaign.owner_id != current_user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={"error": "Access Forbidden", "message": "You do not have permission to view this dataset."},
@@ -182,6 +236,7 @@ def get_import(
 
     return {
         "import_id": dataset.id,
+        "session_id": getattr(dataset, "session_id", None),
         "campaign_id": dataset.campaign_id,
         "name": dataset.name,
         "source_format": dataset.source_format,
@@ -202,10 +257,15 @@ def get_import(
 )
 def get_import_quality_report(
     import_id: str,
+    request: Request,
+    response: Response,
     db: Any = Depends(get_db),
+    session_id: str = Depends(get_session_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ) -> DataQualityReport:
-    """Computes field completeness, missingness, duplicates, and URL validity for an imported dataset."""
+    """Computes field completeness, missingness, duplicates, and URL validity with session protection."""
+    attach_session_cookie(response, session_id, request)
+
     dataset = ImportRepository.get_dataset_by_id(db, import_id)
     if not dataset:
         raise HTTPException(
@@ -213,9 +273,16 @@ def get_import_quality_report(
             detail={"error": "Dataset Not Found", "message": f"No dataset found with id '{import_id}'"},
         )
 
+    # Anonymous Session Isolation
+    if getattr(dataset, "session_id", None) and dataset.session_id != session_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Dataset Not Found", "message": f"No dataset found with id '{import_id}'"},
+        )
+
     if dataset.campaign_id is not None:
         campaign = db.query(Campaign).filter_by(id=dataset.campaign_id).first()
-        if campaign and current_user_id != DEV_USER_ID and campaign.owner_id != current_user_id:
+        if campaign and campaign.owner_id is not None and current_user_id != DEV_USER_ID and campaign.owner_id != current_user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={"error": "Access Forbidden", "message": "You do not have permission to view this dataset's quality report."},
@@ -233,9 +300,18 @@ def get_import_quality_report(
 )
 def get_import_quality_alias(
     import_id: str,
+    request: Request,
+    response: Response,
     db: Any = Depends(get_db),
+    session_id: str = Depends(get_session_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ) -> DataQualityReport:
     """Convenience alias for /quality-report."""
-    return get_import_quality_report(import_id=import_id, db=db, current_user_id=current_user_id)
-
+    return get_import_quality_report(
+        import_id=import_id,
+        request=request,
+        response=response,
+        db=db,
+        session_id=session_id,
+        current_user_id=current_user_id,
+    )

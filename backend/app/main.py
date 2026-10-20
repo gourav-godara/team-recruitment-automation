@@ -7,6 +7,7 @@ from backend.app.api.github import router as github_router
 from backend.app.api.imports import router as imports_router
 from backend.app.api.rules import router as rules_router
 from backend.app.api.scoring import router as scoring_router
+from backend.app.api.session import router as session_router
 from backend.app.core.database import init_db
 
 
@@ -83,4 +84,10 @@ app.include_router(
     rules_router,
     prefix="/api/v1/rules",
     tags=["rules"],
+)
+
+app.include_router(
+    session_router,
+    prefix="/api/v1/session",
+    tags=["session"],
 )
