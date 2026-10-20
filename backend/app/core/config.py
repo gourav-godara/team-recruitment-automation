@@ -59,6 +59,7 @@ class Settings:
 
     # GitHub API enrichment configuration
     GITHUB_TOKEN: Optional[str] = os.getenv("GITHUB_TOKEN", None)
+    GITHUB_URI: str = os.getenv("GITHUB_URI", "https://api.github.com").rstrip("/")
     GITHUB_API_TIMEOUT: float = float(os.getenv("GITHUB_API_TIMEOUT", "8.0"))
 
     # Supabase Auth & Gateway configuration
@@ -67,9 +68,16 @@ class Settings:
     SUPABASE_SERVICE_ROLE_KEY: Optional[str] = os.getenv("SUPABASE_SERVICE_ROLE_KEY", None)
     SUPABASE_JWT_SECRET: Optional[str] = os.getenv("SUPABASE_JWT_SECRET", None)
 
-    # Google OAuth credentials (configured in Google Cloud Console & Supabase Dashboard)
+    # Google OAuth credentials (optional; not required for anonymous public app)
     GOOGLE_CLIENT_ID: Optional[str] = os.getenv("GOOGLE_CLIENT_ID", None)
     GOOGLE_CLIENT_SECRET: Optional[str] = os.getenv("GOOGLE_CLIENT_SECRET", None)
+
+    # Public & Anonymous Session / Upload Settings
+    MAX_UPLOAD_SIZE_BYTES: int = int(os.getenv("MAX_UPLOAD_SIZE_BYTES", str(10 * 1024 * 1024)))  # 10 MB limit
+    SESSION_COOKIE_NAME: str = os.getenv("SESSION_COOKIE_NAME", "recruitment_session_id")
+    SESSION_COOKIE_SECURE: bool = os.getenv("SESSION_COOKIE_SECURE", "false").lower() in ("true", "1", "yes")
+    SESSION_COOKIE_SAMESITE: str = os.getenv("SESSION_COOKIE_SAMESITE", "lax")
+    SESSION_MAX_AGE_SECONDS: int = int(os.getenv("SESSION_MAX_AGE_SECONDS", str(7 * 24 * 3600)))  # 7 days
 
 
 settings = Settings()

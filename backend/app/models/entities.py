@@ -19,6 +19,7 @@ Maps to tables:
 """
 
 from datetime import datetime, timezone
+import json
 from typing import Any, Dict, List, Optional
 import uuid
 
@@ -41,15 +42,76 @@ if HAS_SQLALCHEMY and Base is not None:
     from sqlalchemy.dialects.postgresql import JSONB, UUID
     from sqlalchemy.orm import relationship
 
-    # Fallback to standard JSON and String(36) if PostgreSQL dialect is not active (e.g. SQLite tests)
-    JSON_TYPE = JSONB().with_variant(Text, "sqlite")
-    UUID_TYPE = UUID(as_uuid=True).with_variant(String(36), "sqlite")
+    from sqlalchemy.types import TypeDecorator
+
+    class PortableJSON(TypeDecorator):
+        """JSON type that transparently serializes/deserializes dicts for SQLite and uses JSONB for PostgreSQL."""
+        impl = Text
+        cache_ok = True
+
+        def load_dialect_impl(self, dialect):
+            if dialect.name == "postgresql":
+                return dialect.type_descriptor(JSONB())
+            else:
+                return dialect.type_descriptor(Text())
+
+        def process_bind_param(self, value, dialect):
+            if value is None:
+                return None
+            if dialect.name == "postgresql":
+                return value
+            return json.dumps(value)
+
+        def process_result_value(self, value, dialect):
+            if value is None:
+                return None
+            if dialect.name == "postgresql":
+                return value
+            if isinstance(value, (dict, list)):
+                return value
+            try:
+                return json.loads(value)
+            except Exception:
+                return value
+
+    class PortableUUID(TypeDecorator):
+        """UUID type that transparently stores as String(36) on SQLite and UUID on PostgreSQL."""
+        impl = String(36)
+        cache_ok = True
+
+        def load_dialect_impl(self, dialect):
+            if dialect.name == "postgresql":
+                return dialect.type_descriptor(UUID(as_uuid=True))
+            else:
+                return dialect.type_descriptor(String(36))
+
+        def process_bind_param(self, value, dialect):
+            if value is None:
+                return None
+            if dialect.name == "postgresql":
+                return value
+            return str(value)
+
+        def process_result_value(self, value, dialect):
+            if value is None:
+                return None
+            if isinstance(value, uuid.UUID):
+                return value
+            try:
+                return uuid.UUID(str(value))
+            except Exception:
+                return value
+
+    # Universal JSON and UUID types compatible with both PostgreSQL and SQLite
+    JSON_TYPE = PortableJSON
+    UUID_TYPE = PortableUUID
 
     class Campaign(Base):
         __tablename__ = "campaigns"
 
         id = Column(Integer, primary_key=True, autoincrement=True)
-        owner_id = Column(UUID_TYPE, nullable=False)
+        owner_id = Column(UUID_TYPE, nullable=True)
+        session_id = Column(String(64), nullable=True, index=True)
         name = Column(Text, nullable=False)
         created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
@@ -60,6 +122,7 @@ if HAS_SQLALCHEMY and Base is not None:
 
         id = Column(Integer, primary_key=True, autoincrement=True)
         campaign_id = Column(Integer, ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=True)
+        session_id = Column(String(64), nullable=True, index=True)
         name = Column(Text, nullable=False)
         source_format = Column(Text, nullable=False)  # 'csv' or 'json'
         file_hash = Column(Text, nullable=True)
@@ -156,6 +219,7 @@ if HAS_SQLALCHEMY and Base is not None:
         id = Column(Integer, primary_key=True, autoincrement=True)
         dataset_id = Column(Integer, ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False)
         config_id = Column(Integer, ForeignKey("configs.id"), nullable=False)
+        session_id = Column(String(64), nullable=True, index=True)
         config_snapshot = Column(JSON_TYPE, nullable=False, default=dict)
         top_x = Column(Integer, nullable=False)
         teams_total = Column(Integer, nullable=False, default=0)
@@ -240,6 +304,7 @@ if HAS_SQLALCHEMY and Base is not None:
         id = Column(Integer, primary_key=True, autoincrement=True)
         run_id = Column(Integer, ForeignKey("runs.id", ondelete="CASCADE"), nullable=False)
         team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
+        session_id = Column(String(64), nullable=True, index=True)
         action = Column(Text, nullable=False)  # 'pin', 'exclude', 'waitlist'
         reason = Column(Text, nullable=False)
         created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
@@ -257,6 +322,7 @@ if HAS_SQLALCHEMY and Base is not None:
         team_a_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
         team_b_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
         preferred_team_id = Column(Integer, ForeignKey("teams.id"), nullable=True)
+        session_id = Column(String(64), nullable=True, index=True)
         reason = Column(Text, nullable=True)
         created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
         created_by = Column(UUID_TYPE, nullable=True)
@@ -272,6 +338,8 @@ if HAS_SQLALCHEMY and Base is not None:
         table_name = Column(Text, nullable=False)
         record_id = Column(Integer, nullable=True)
         action = Column(Text, nullable=False)  # 'insert', 'update', 'delete'
+        session_id = Column(String(64), nullable=True, index=True)
+        actor_type = Column(String(32), default="anonymous", nullable=False)
         old_values = Column(JSON_TYPE, nullable=True)
         new_values = Column(JSON_TYPE, nullable=True)
         changed_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
@@ -297,11 +365,12 @@ else:
     class Campaign:
         __tablename__ = "campaigns"
 
-        def __init__(self, id: Optional[int] = None, owner_id: Optional[uuid.UUID] = None, name: str = "", created_at: Optional[datetime] = None):
+        def __init__(self, id: Optional[int] = None, owner_id: Optional[uuid.UUID] = None, name: str = "", created_at: Optional[datetime] = None, session_id: Optional[str] = None):
             self.id = id
-            self.owner_id = owner_id or uuid.uuid4()
+            self.owner_id = owner_id
             self.name = name
             self.created_at = created_at or datetime.now(timezone.utc)
+            self.session_id = session_id
 
     class Dataset:
         __tablename__ = "datasets"
@@ -316,6 +385,7 @@ else:
             column_mapping: Optional[Dict[str, Any]] = None,
             total_teams: int = 0,
             uploaded_at: Optional[datetime] = None,
+            session_id: Optional[str] = None,
         ):
             self.id = id
             self.campaign_id = campaign_id
@@ -325,6 +395,7 @@ else:
             self.column_mapping = column_mapping or {}
             self.total_teams = total_teams
             self.uploaded_at = uploaded_at or datetime.now(timezone.utc)
+            self.session_id = session_id
             self.teams: List["Team"] = []
 
     class Team:
@@ -444,6 +515,7 @@ else:
             teams_shortlisted: int = 0,
             result_hash: Optional[str] = None,
             run_at: Optional[datetime] = None,
+            session_id: Optional[str] = None,
         ):
             self.id = id
             self.dataset_id = dataset_id
@@ -454,6 +526,7 @@ else:
             self.teams_shortlisted = teams_shortlisted
             self.result_hash = result_hash
             self.run_at = run_at or datetime.now(timezone.utc)
+            self.session_id = session_id
 
     class RunResult:
         __tablename__ = "run_results"
@@ -571,6 +644,7 @@ else:
             reason: str = "",
             created_at: Optional[datetime] = None,
             created_by: Optional[uuid.UUID] = None,
+            session_id: Optional[str] = None,
         ):
             self.id = id
             self.run_id = run_id
@@ -579,6 +653,7 @@ else:
             self.reason = reason
             self.created_at = created_at or datetime.now(timezone.utc)
             self.created_by = created_by
+            self.session_id = session_id
 
     class PairwiseComparison:
         __tablename__ = "pairwise_comparisons"
@@ -593,6 +668,7 @@ else:
             reason: Optional[str] = None,
             created_at: Optional[datetime] = None,
             created_by: Optional[uuid.UUID] = None,
+            session_id: Optional[str] = None,
         ):
             self.id = id
             self.run_id = run_id
@@ -602,6 +678,7 @@ else:
             self.reason = reason
             self.created_at = created_at or datetime.now(timezone.utc)
             self.created_by = created_by
+            self.session_id = session_id
 
     class AuditLog:
         __tablename__ = "audit_log"
@@ -615,6 +692,8 @@ else:
             new_values: Optional[Dict[str, Any]] = None,
             changed_at: Optional[datetime] = None,
             changed_by: Optional[uuid.UUID] = None,
+            session_id: Optional[str] = None,
+            actor_type: str = "anonymous",
         ):
             self.id = id
             self.table_name = table_name
@@ -624,6 +703,8 @@ else:
             self.new_values = new_values
             self.changed_at = changed_at or datetime.now(timezone.utc)
             self.changed_by = changed_by
+            self.session_id = session_id
+            self.actor_type = actor_type
 
     class LeaderboardView:
         __tablename__ = "v_leaderboard"

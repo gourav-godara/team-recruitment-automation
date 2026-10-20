@@ -1,15 +1,17 @@
 """API router for evaluating datasets, retrieving persisted evaluation runs, and exporting CSVs.
 
-Directly integrates with 'runs', 'run_results', 'run_score_details', and 'run_rule_results' PostgreSQL tables.
+Supports anonymous no-login operations with cryptographic session isolation,
+RFC 4180 compliant CSV exports, pairwise comparisons, reviewer overrides, and sensitivity simulations.
 """
 
 from typing import Any, List, Optional, Union
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
 from backend.app.core.database import get_db
 from backend.app.core.security import DEV_USER_ID, get_current_user_id
+from backend.app.core.session import attach_session_cookie, get_session_id
 from backend.app.models.entities import Campaign, Run
 from backend.app.schemas.data_quality import DataQualityReport
 from backend.app.schemas.sensitivity import SensitivityComparison
@@ -41,34 +43,68 @@ class EvaluateDatasetRequest(BaseModel):
     only_valid: bool = Field(default=True, description="Whether to evaluate only valid teams")
 
 
+def _check_run_session_access(db: Any, run_id: Union[int, str], session_id: str) -> Optional[Run]:
+    """Helper ensuring that an evaluation run belongs to the caller's anonymous session or is public."""
+    if not hasattr(db, "query"):
+        return None
+    try:
+        int_id = int(run_id)
+        run_record = db.query(Run).filter_by(id=int_id).first()
+    except (ValueError, TypeError):
+        run_record = db.query(Run).filter_by(id=run_id).first()
+
+    if run_record and getattr(run_record, "session_id", None):
+        if run_record.session_id != session_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "Evaluation Run Not Found", "message": f"Run '{run_id}' does not exist."},
+            )
+    return run_record
+
+
 @router.post(
     "",
     response_model=ScoringEvaluationResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Evaluate an imported candidate dataset and persist results",
+    summary="Evaluate an imported candidate dataset and persist results (No Login Required)",
 )
 def evaluate_dataset(
-    request: EvaluateDatasetRequest,
+    request_data: EvaluateDatasetRequest,
+    request: Request,
+    response: Response,
     db: Any = Depends(get_db),
+    session_id: str = Depends(get_session_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ) -> ScoringEvaluationResponse:
-    """Retrieves an imported dataset, executes the Core Decision Engine, and persists the evaluation run into 'runs'."""
-    dataset = ImportRepository.get_dataset_by_id(db, request.dataset_id)
+    """Retrieves an imported dataset, executes the Core Decision Engine, and persists the evaluation run into 'runs'.
+
+    Strictly isolated by anonymous session: only the session that uploaded the dataset (or public presets) can evaluate it.
+    """
+    attach_session_cookie(response, session_id, request)
+
+    dataset = ImportRepository.get_dataset_by_id(db, request_data.dataset_id)
     if not dataset:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"error": "Dataset Not Found", "message": f"Dataset '{request.dataset_id}' does not exist."},
+            detail={"error": "Dataset Not Found", "message": f"Dataset '{request_data.dataset_id}' does not exist."},
+        )
+
+    # Anonymous Session Isolation: callers can only evaluate datasets from their own session (or public presets)
+    if getattr(dataset, "session_id", None) and dataset.session_id != session_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Dataset Not Found", "message": f"Dataset '{request_data.dataset_id}' does not exist."},
         )
 
     if dataset.campaign_id is not None:
         campaign = db.query(Campaign).filter_by(id=dataset.campaign_id).first()
-        if campaign and current_user_id != DEV_USER_ID and campaign.owner_id != current_user_id:
+        if campaign and campaign.owner_id is not None and current_user_id != DEV_USER_ID and campaign.owner_id != current_user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={"error": "Access Forbidden", "message": "You do not have permission to evaluate this dataset."},
             )
 
-    teams = ImportRepository.get_dataset_teams(db, dataset.id, only_valid=request.only_valid)
+    teams = ImportRepository.get_dataset_teams(db, dataset.id, only_valid=request_data.only_valid)
     if not teams:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -76,14 +112,15 @@ def evaluate_dataset(
         )
 
     try:
-        response = EvaluationService.evaluate_and_persist(
+        eval_response = EvaluationService.evaluate_and_persist(
             db=db,
             teams=teams,
-            config=request.config,
+            config=request_data.config,
             dataset_id=dataset.id,
-            config_id=request.config_id,
+            config_id=request_data.config_id,
+            session_id=session_id,
         )
-        return response
+        return eval_response
     except ValueError as ve:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -104,13 +141,19 @@ def evaluate_dataset(
 )
 def get_evaluation(
     run_id: str,
+    request: Request,
+    response: Response,
     anonymize: bool = False,
+    session_id: str = Depends(get_session_id),
     db: Any = Depends(get_db),
 ) -> ScoringEvaluationResponse:
     """Retrieves an evaluation run and its exact ranking and explanation outputs without recalculating.
 
-    Supports optional 'anonymize=true' Blind Review Mode (masks team and candidate names).
+    Guarded by anonymous session isolation. Supports optional 'anonymize=true' Blind Review Mode.
     """
+    attach_session_cookie(response, session_id, request)
+    _check_run_session_access(db, run_id, session_id)
+
     saved_eval = EvaluationService.get_saved_evaluation(db, run_id)
     if not saved_eval:
         raise HTTPException(
@@ -139,9 +182,15 @@ def get_evaluation(
 )
 def export_evaluation_csv(
     run_id: str,
+    request: Request,
+    response: Response,
+    session_id: str = Depends(get_session_id),
     db: Any = Depends(get_db),
 ) -> Response:
     """Streams a CSV file containing ranks, scores, breakdowns, and explanations."""
+    attach_session_cookie(response, session_id, request)
+    _check_run_session_access(db, run_id, session_id)
+
     csv_content = ExportService.export_full_audit_to_csv(db, run_id)
     if csv_content is None:
         raise HTTPException(
@@ -149,10 +198,14 @@ def export_evaluation_csv(
             detail={"error": "Evaluation Run Not Found", "message": f"Cannot export run '{run_id}': not found."},
         )
 
+    headers = {
+        "Content-Disposition": f'attachment; filename="full_evaluation_audit_{run_id}.csv"',
+        "X-Session-ID": session_id,
+    }
     return Response(
         content=csv_content,
         media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="full_evaluation_audit_{run_id}.csv"'},
+        headers=headers,
     )
 
 
@@ -163,9 +216,15 @@ def export_evaluation_csv(
 )
 def export_shortlist_endpoint(
     run_id: str,
+    request: Request,
+    response: Response,
+    session_id: str = Depends(get_session_id),
     db: Any = Depends(get_db),
 ) -> Response:
     """Streams an RFC 4180 CSV containing only the officially shortlisted Top X teams."""
+    attach_session_cookie(response, session_id, request)
+    _check_run_session_access(db, run_id, session_id)
+
     csv_content = ExportService.export_shortlist_to_csv(db, run_id)
     if csv_content is None:
         raise HTTPException(
@@ -173,10 +232,14 @@ def export_shortlist_endpoint(
             detail={"error": "Evaluation Run Not Found", "message": f"Cannot export run '{run_id}': not found."},
         )
 
+    headers = {
+        "Content-Disposition": f'attachment; filename="shortlist_top_x_{run_id}.csv"',
+        "X-Session-ID": session_id,
+    }
     return Response(
         content=csv_content,
         media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="shortlist_top_x_{run_id}.csv"'},
+        headers=headers,
     )
 
 
@@ -187,21 +250,13 @@ def export_shortlist_endpoint(
 )
 def export_audit_endpoint(
     run_id: str,
+    request: Request,
+    response: Response,
+    session_id: str = Depends(get_session_id),
     db: Any = Depends(get_db),
 ) -> Response:
     """Streams a comprehensive audit CSV of all evaluated, cutoff, and disqualified teams."""
-    csv_content = ExportService.export_full_audit_to_csv(db, run_id)
-    if csv_content is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"error": "Evaluation Run Not Found", "message": f"Cannot export run '{run_id}': not found."},
-        )
-
-    return Response(
-        content=csv_content,
-        media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="full_evaluation_audit_{run_id}.csv"'},
-    )
+    return export_evaluation_csv(run_id=run_id, request=request, response=response, session_id=session_id, db=db)
 
 
 @router.get(
@@ -211,9 +266,15 @@ def export_audit_endpoint(
 )
 def export_config_endpoint(
     run_id: str,
+    request: Request,
+    response: Response,
+    session_id: str = Depends(get_session_id),
     db: Any = Depends(get_db),
 ) -> Response:
     """Streams the exact JSON configuration snapshot used for this evaluation run."""
+    attach_session_cookie(response, session_id, request)
+    _check_run_session_access(db, run_id, session_id)
+
     json_content = ExportService.export_configuration_snapshot_json(db, run_id)
     if json_content is None:
         raise HTTPException(
@@ -221,10 +282,14 @@ def export_config_endpoint(
             detail={"error": "Evaluation Run Not Found", "message": f"Cannot export run '{run_id}': not found."},
         )
 
+    headers = {
+        "Content-Disposition": f'attachment; filename="run_configuration_snapshot_{run_id}.json"',
+        "X-Session-ID": session_id,
+    }
     return Response(
         content=json_content,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="run_configuration_snapshot_{run_id}.json"'},
+        headers=headers,
     )
 
 
@@ -235,9 +300,15 @@ def export_config_endpoint(
 )
 def export_bundle_endpoint(
     run_id: str,
+    request: Request,
+    response: Response,
+    session_id: str = Depends(get_session_id),
     db: Any = Depends(get_db),
 ) -> Response:
     """Streams a single .ZIP package containing shortlist_top_x.csv, full_evaluation_audit.csv, and run_configuration_snapshot.json."""
+    attach_session_cookie(response, session_id, request)
+    _check_run_session_access(db, run_id, session_id)
+
     zip_bytes = ExportService.export_complete_bundle_zip(db, run_id)
     if zip_bytes is None:
         raise HTTPException(
@@ -245,10 +316,14 @@ def export_bundle_endpoint(
             detail={"error": "Evaluation Run Not Found", "message": f"Cannot export run '{run_id}': not found."},
         )
 
+    headers = {
+        "Content-Disposition": f'attachment; filename="recruitment_audit_bundle_{run_id}.zip"',
+        "X-Session-ID": session_id,
+    }
     return Response(
         content=zip_bytes,
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="recruitment_audit_bundle_{run_id}.zip"'},
+        headers=headers,
     )
 
 
@@ -261,9 +336,15 @@ def compare_teams_endpoint(
     run_id: str,
     team_a: str,
     team_b: str,
+    request: Request,
+    response: Response,
+    session_id: str = Depends(get_session_id),
     db: Any = Depends(get_db),
 ):
     """Provides side-by-side comparative analysis of two teams in an evaluation run."""
+    attach_session_cookie(response, session_id, request)
+    _check_run_session_access(db, run_id, session_id)
+
     from backend.app.services.comparison_service import ComparisonService
 
     res = ComparisonService.compare_teams(db=db, run_id=run_id, team_a_id=team_a, team_b_id=team_b)
@@ -283,10 +364,16 @@ def compare_teams_endpoint(
 )
 def get_leaderboard(
     run_id: str,
+    request: Request,
+    response: Response,
     anonymize: bool = False,
+    session_id: str = Depends(get_session_id),
     db: Any = Depends(get_db),
 ) -> List[LeaderboardItemResponse]:
     """Retrieves ranked leaderboard data directly from the high-performance 'v_leaderboard' PostgreSQL view."""
+    attach_session_cookie(response, session_id, request)
+    _check_run_session_access(db, run_id, session_id)
+
     leaderboard = EvaluationService.get_leaderboard(db, run_id)
     if not leaderboard:
         saved_eval = EvaluationService.get_saved_evaluation(db, run_id)
@@ -311,21 +398,27 @@ def get_leaderboard(
 )
 def apply_override(
     run_id: str,
-    request: TeamOverrideRequest,
+    request_data: TeamOverrideRequest,
+    request: Request,
+    response: Response,
     db: Any = Depends(get_db),
+    session_id: str = Depends(get_session_id),
     user_id: uuid.UUID = Depends(get_current_user_id),
 ) -> TeamOverrideResponse:
     """Applies a manual reviewer override ('pin', 'exclude', 'waitlist') with justification.
 
     Updates run_results outcome, fires trigger to record in audit_log, and updates candidate status.
     """
+    attach_session_cookie(response, session_id, request)
+    _check_run_session_access(db, run_id, session_id)
+
     try:
         res = OverrideService.apply_override(
             db=db,
             run_id=run_id,
-            team_id_or_code=request.team_id,
-            action=request.action,
-            reason=request.reason,
+            team_id_or_code=request_data.team_id,
+            action=request_data.action,
+            reason=request_data.reason,
             user_id=user_id,
         )
         return TeamOverrideResponse(**res)
@@ -349,9 +442,15 @@ def apply_override(
 )
 def get_overrides(
     run_id: str,
+    request: Request,
+    response: Response,
+    session_id: str = Depends(get_session_id),
     db: Any = Depends(get_db),
 ) -> List[TeamOverrideResponse]:
     """Retrieves all reviewer overrides recorded for this evaluation run."""
+    attach_session_cookie(response, session_id, request)
+    _check_run_session_access(db, run_id, session_id)
+
     saved_eval = EvaluationService.get_saved_evaluation(db, run_id)
     if not saved_eval:
         raise HTTPException(
@@ -370,9 +469,15 @@ def get_overrides(
 )
 def get_audit_trail(
     run_id: str,
+    request: Request,
+    response: Response,
+    session_id: str = Depends(get_session_id),
     db: Any = Depends(get_db),
 ) -> List[AuditLogEntryResponse]:
     """Retrieves audit trail events from audit_log relating to this evaluation run and reviewer overrides."""
+    attach_session_cookie(response, session_id, request)
+    _check_run_session_access(db, run_id, session_id)
+
     saved_eval = EvaluationService.get_saved_evaluation(db, run_id)
     if not saved_eval:
         raise HTTPException(
@@ -395,9 +500,15 @@ class SensitivityPreviewRequest(BaseModel):
 )
 def preview_sensitivity(
     run_id: str,
-    request: SensitivityPreviewRequest,
+    request_data: SensitivityPreviewRequest,
+    request: Request,
+    response: Response,
+    session_id: str = Depends(get_session_id),
     db: Any = Depends(get_db),
 ) -> SensitivityComparison:
+    attach_session_cookie(response, session_id, request)
+    run_record = _check_run_session_access(db, run_id, session_id)
+
     saved_eval = EvaluationService.get_saved_evaluation(db, run_id)
     if not saved_eval:
         raise HTTPException(
@@ -405,12 +516,12 @@ def preview_sensitivity(
             detail={"error": "Evaluation Run Not Found", "message": f"Run '{run_id}' does not exist."},
         )
 
-    # Fetch dataset associated with run
-    try:
-        int_run_id = int(run_id)
-        run_record = db.query(Run).filter_by(id=int_run_id).first()
-    except ValueError:
-        run_record = db.query(Run).filter_by(id=run_id).first()
+    if not run_record:
+        try:
+            int_run_id = int(run_id)
+            run_record = db.query(Run).filter_by(id=int_run_id).first()
+        except (ValueError, TypeError):
+            run_record = db.query(Run).filter_by(id=run_id).first()
 
     if not run_record:
         raise HTTPException(
@@ -430,7 +541,7 @@ def preview_sensitivity(
     return SensitivityService.simulate_what_if(
         teams=domain_teams,
         base_config=saved_eval.config,
-        new_config=request.new_config,
+        new_config=request_data.new_config,
     )
 
 
@@ -442,13 +553,20 @@ def preview_sensitivity(
 )
 def get_run_quality_report(
     run_id: str,
+    request: Request,
+    response: Response,
+    session_id: str = Depends(get_session_id),
     db: Any = Depends(get_db),
 ) -> DataQualityReport:
-    try:
-        int_run_id = int(run_id)
-        run_record = db.query(Run).filter_by(id=int_run_id).first()
-    except ValueError:
-        run_record = db.query(Run).filter_by(id=run_id).first()
+    attach_session_cookie(response, session_id, request)
+    run_record = _check_run_session_access(db, run_id, session_id)
+
+    if not run_record:
+        try:
+            int_run_id = int(run_id)
+            run_record = db.query(Run).filter_by(id=int_run_id).first()
+        except (ValueError, TypeError):
+            run_record = db.query(Run).filter_by(id=run_id).first()
 
     if not run_record:
         raise HTTPException(
@@ -458,6 +576,3 @@ def get_run_quality_report(
 
     teams = ImportRepository.get_dataset_teams(db, run_record.dataset_id, only_valid=False)
     return DataQualityService.analyze_teams(teams=teams, dataset_id=str(run_record.dataset_id))
-
-
-

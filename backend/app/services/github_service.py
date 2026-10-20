@@ -149,8 +149,9 @@ class GitHubService:
         headers = self._get_headers()
         client = self._client or httpx.Client(timeout=self.timeout)
 
-        user_url = f"https://api.github.com/users/{username}"
-        repos_url = f"https://api.github.com/users/{username}/repos?per_page=100&sort=updated"
+        base_url = getattr(settings, "GITHUB_URI", "https://api.github.com").rstrip("/")
+        user_url = f"{base_url}/users/{username}"
+        repos_url = f"{base_url}/users/{username}/repos?per_page=100&sort=updated"
 
         close_client = self._client is None
         try:

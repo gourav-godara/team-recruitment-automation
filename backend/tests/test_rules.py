@@ -63,6 +63,13 @@ def test_rule_operators():
     r_not_exists = RuleConfig(name="No portfolio", field="portfolio", operator=RuleOperator.NOT_EXISTS)
     assert evaluate_single_rule(team, r_not_exists).status == RuleStatus.PASS
 
+    # BETWEEN
+    r_between = RuleConfig(name="Age between", field="age", operator=RuleOperator.BETWEEN, value=[18, 25])
+    assert evaluate_single_rule(team, r_between).status == RuleStatus.PASS
+
+    r_between_fail = RuleConfig(name="Age between fail", field="age", operator=RuleOperator.BETWEEN, value=[25, 30])
+    assert evaluate_single_rule(team, r_between_fail).status == RuleStatus.FAIL
+
 
 def test_member_any_rule_evaluation():
     """At least one member must have github >= 50."""
