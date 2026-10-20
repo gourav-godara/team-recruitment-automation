@@ -1,6 +1,5 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from backend.app.api.auth import router as auth_router
 from backend.app.api.campaigns import router as campaigns_router
 from backend.app.api.evaluations import router as evaluations_router
 from backend.app.api.exports import router as exports_router
@@ -78,12 +77,6 @@ app.include_router(
     campaigns_router,
     prefix="/api/v1/campaigns",
     tags=["campaigns"],
-)
-
-app.include_router(
-    auth_router,
-    prefix="/api/v1/auth",
-    tags=["auth"],
 )
 
 app.include_router(

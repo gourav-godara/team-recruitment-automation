@@ -218,6 +218,17 @@ def list_rule_types() -> List[RuleTypeMetadata]:
     return RULE_METADATA_CATALOG
 
 
+@router.get(
+    "/catalog",
+    response_model=List[RuleTypeMetadata],
+    status_code=status.HTTP_200_OK,
+    include_in_schema=False,
+)
+def list_rule_catalog() -> List[RuleTypeMetadata]:
+    """Alias for /types to ensure backward/forward compatibility."""
+    return RULE_METADATA_CATALOG
+
+
 @router.post(
     "/validate",
     response_model=RuleValidationResponse,
