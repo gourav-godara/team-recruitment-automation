@@ -70,6 +70,8 @@ def calculate_team_score(
         # Scoring boundary validation: check member/team signals entering scoring for this criterion
         for sig in member_signals:
             if sig.status in (SignalState.PRESENT, SignalState.FLAGGED) and sig.value is not None:
+                if isinstance(sig.value, (list, tuple, set)):
+                    sig.value = float(len(sig.value))
                 if isinstance(sig.value, bool):
                     raise ValueError(
                         f"Criterion '{criterion}' score for team '{team.team_id}' must be numeric, not boolean "
