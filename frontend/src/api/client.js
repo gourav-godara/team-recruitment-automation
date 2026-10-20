@@ -1,33 +1,45 @@
 /**
  * API Client for Team Recruitment Automation Backend
  * Base URL configured via VITE_API_BASE_URL (defaults to http://localhost:8000/api/v1)
+ *
+ * Implements public anonymous no-login session propagation with dual transport:
+ * 1. Automatic 'X-Session-ID' request header from localStorage
+ * 2. 'credentials: include' for HttpOnly session cookie synchronization
  */
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
 /**
- * Retrieves the optional Supabase access token from localStorage.
- * Returns null if not present, ensuring requests work without authentication in dev/offline mode.
+ * Returns or generates a persistent anonymous session ID stored in localStorage.
  */
-function getAuthToken() {
-  return localStorage.getItem('supabase_access_token') || localStorage.getItem('token') || null;
+export function getOrCreateSessionId() {
+  let sessionId = localStorage.getItem('recruitment_session_id');
+  if (!sessionId) {
+    // Generate a secure client-side temporary token until confirmed by backend
+    sessionId = 'sess_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    localStorage.setItem('recruitment_session_id', sessionId);
+  }
+  return sessionId;
+}
+
+export function setSessionId(newSessionId) {
+  if (newSessionId) {
+    localStorage.setItem('recruitment_session_id', newSessionId);
+  }
 }
 
 /**
- * Generic fetch wrapper with timeout, JSON formatting, auth headers, and readable error handling.
+ * Generic fetch wrapper with timeout, JSON formatting, anonymous session headers, and clear error handling.
  */
 async function request(endpoint, options = {}) {
   const url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 
+  const sessionId = getOrCreateSessionId();
+
   const headers = {
+    'X-Session-ID': sessionId,
     ...(options.headers || {}),
   };
-
-  // Add optional Authorization header if a token exists
-  const token = getAuthToken();
-  if (token && !headers['Authorization']) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
 
   // Set default JSON Content-Type only if not sending FormData, raw Blob, or custom type
   if (
@@ -42,13 +54,19 @@ async function request(endpoint, options = {}) {
   let response;
   try {
     response = await fetch(url, {
+      credentials: 'include',
       ...options,
       headers,
     });
   } catch (err) {
-    // Distinguish CORS/network errors
     const errorMsg = err.message || 'Network request failed';
-    throw new Error(`Connection error to ${url}: ${errorMsg}. Please ensure the backend is running at ${API_BASE_URL}.`);
+    throw new Error(`Connection error to ${url}: ${errorMsg}. Please ensure the backend is running at ${API_BASE_URL}.`, { cause: err });
+  }
+
+  // Update session ID if returned in response headers
+  const serverSession = response.headers.get('x-session-id');
+  if (serverSession) {
+    setSessionId(serverSession);
   }
 
   if (!response.ok) {
@@ -77,7 +95,12 @@ async function request(endpoint, options = {}) {
 
   // If response is raw binary/blob or CSV
   const contentType = response.headers.get('content-type') || '';
-  if (options.responseType === 'blob' || contentType.includes('text/csv') || contentType.includes('application/zip')) {
+  if (
+    options.responseType === 'blob' ||
+    contentType.includes('text/csv') ||
+    contentType.includes('application/zip') ||
+    contentType.includes('application/octet-stream')
+  ) {
     return response.blob();
   }
 
@@ -89,7 +112,7 @@ async function request(endpoint, options = {}) {
 }
 
 // ----------------------------------------------------------------------
-// Campaigns Endpoints
+// Anonymous Session Endpoints
 // ----------------------------------------------------------------------
 
 /**
@@ -103,10 +126,8 @@ export async function getCampaigns() {
 /**
  * Creates a new recruitment campaign.
  * POST /campaigns
- * payload: { name: string, description?: string }
  */
 export async function createCampaign(payload) {
-  // Backend schema accepts { name: string }
   const body = {
     name: payload.name?.trim(),
   };
@@ -116,13 +137,43 @@ export async function createCampaign(payload) {
   });
 }
 
+/**
+ * Gets active anonymous session metadata (dataset counts, run counts).
+ * GET /session
+ */
+export async function getSession() {
+  return request('/session');
+}
+
+/**
+ * Gets datasets and runs executed within the current anonymous session.
+ * GET /session/history
+ */
+export async function getSessionHistory() {
+  return request('/session/history');
+}
+
+/**
+ * Resets session, clearing local cookie and token.
+ * POST /session/reset
+ */
+export async function resetSession() {
+  const result = await request('/session/reset', { method: 'POST' });
+  if (result?.session_id) {
+    setSessionId(result.session_id);
+  } else {
+    localStorage.removeItem('recruitment_session_id');
+  }
+  return result;
+}
+
 // ----------------------------------------------------------------------
 // Imports & Data Quality Endpoints
 // ----------------------------------------------------------------------
 
 /**
- * Uploads a candidate registration dataset (CSV file or raw string).
- * POST /imports?filename=...&campaign_id=...
+ * Uploads a candidate registration dataset (CSV file, raw string, or JSON).
+ * POST /imports?filename=...&persist=true
  */
 export async function uploadImport(fileOrContent, filename = 'registrations.csv', campaignId = null) {
   const queryParams = new URLSearchParams();
@@ -139,10 +190,10 @@ export async function uploadImport(fileOrContent, filename = 'registrations.csv'
 
   if (typeof fileOrContent === 'string') {
     body = fileOrContent;
-    headers['Content-Type'] = 'text/csv';
+    headers['Content-Type'] = filename.endsWith('.json') ? 'application/json' : 'text/csv';
   } else if (fileOrContent instanceof File || fileOrContent instanceof Blob) {
     body = await fileOrContent.text();
-    headers['Content-Type'] = 'text/csv';
+    headers['Content-Type'] = fileOrContent.name?.endsWith('.json') ? 'application/json' : 'text/csv';
   } else if (fileOrContent instanceof FormData) {
     body = fileOrContent;
   } else {
@@ -156,7 +207,6 @@ export async function uploadImport(fileOrContent, filename = 'registrations.csv'
     body,
   });
 
-  // Ensure dataset_id is accessible whether the backend returns import_id or dataset_id
   const datasetId = result.import_id !== undefined ? result.import_id : result.dataset_id;
   return {
     ...result,
@@ -165,28 +215,35 @@ export async function uploadImport(fileOrContent, filename = 'registrations.csv'
 }
 
 /**
+ * Retrieves details and raw teams for an imported dataset.
+ * GET /imports/{dataset_id}
+ */
+export async function getDataset(datasetId) {
+  return request(`/imports/${datasetId}`);
+}
+
+/**
  * Retrieves the comprehensive Data Quality Report for an imported dataset.
- * GET /imports/{dataset_id}/quality
+ * GET /imports/{dataset_id}/quality-report
  */
 export async function getQualityReport(datasetId) {
   try {
-    return await request(`/imports/${datasetId}/quality`);
+    return await request(`/imports/${datasetId}/quality-report`);
   } catch (err) {
     if (err.status === 404) {
-      // Fallback alias
-      return await request(`/imports/${datasetId}/quality-report`);
+      return await request(`/imports/${datasetId}/quality`);
     }
     throw err;
   }
 }
 
 // ----------------------------------------------------------------------
-// Rules & Evaluation Endpoints
+// Rules Catalog Endpoints
 // ----------------------------------------------------------------------
 
 /**
  * Retrieves catalog of available rule types, templates, and operators.
- * GET /rules/catalog (or /rules/types)
+ * GET /rules/types
  */
 export async function getRulesCatalog() {
   try {
@@ -199,31 +256,31 @@ export async function getRulesCatalog() {
   }
 }
 
+// ----------------------------------------------------------------------
+// Decision Engine Evaluation Endpoints
+// ----------------------------------------------------------------------
+
 /**
  * Helper to build and validate the evaluation request payload according to backend specs.
- * Enforces:
- * 1. Weights sum to 1.0 (+/- 0.001)
- * 2. Only toggled-on rules are included
- * 3. Min team size <= Max team size
  */
 export function buildEvaluatePayload(datasetId, topX, ruleSettings = [], weights = {}) {
   // Validate weights
   const weightValues = Object.values(weights);
   const totalWeight = weightValues.reduce((acc, val) => acc + Number(val || 0), 0);
-  if (Math.abs(totalWeight - 1.0) > 0.001) {
+  if (Math.abs(totalWeight - 1.0) > 0.005) {
     throw new Error(
-      `Scoring weights must sum to 1.0 (current sum: ${totalWeight.toFixed(4)}). Please balance your sliders before running.`
+      `Scoring weights must sum to 1.0 (current sum: ${totalWeight.toFixed(4)}). Please balance your criteria weights before running.`
     );
   }
 
-  // Validate and format rules
+  // Validate and format rules to match backend RuleConfig schema
   const activeRules = [];
   for (const rule of ruleSettings) {
     if (!rule.enabled) continue;
 
-    if (rule.rule_type === 'TEAM_SIZE_BETWEEN' || rule.id === 'gate4' || rule.id === 'rule_team_size') {
+    if (rule.rule_type === 'TEAM_SIZE_BETWEEN' || rule.type === 'TEAM_SIZE_BETWEEN' || rule.id === 'gate_team_size') {
       const min = Number(rule.min_value ?? (Array.isArray(rule.value) ? rule.value[0] : 2));
-      const max = Number(rule.max_value ?? (Array.isArray(rule.value) ? rule.value[1] : 4));
+      const max = Number(rule.max_value ?? (Array.isArray(rule.value) ? rule.value[1] : 5));
       if (min > max) {
         throw new Error(`Minimum team size (${min}) cannot exceed maximum team size (${max}).`);
       }
@@ -236,17 +293,34 @@ export function buildEvaluatePayload(datasetId, topX, ruleSettings = [], weights
       });
     } else if (rule.field && rule.operator) {
       activeRules.push({
-        name: rule.name || rule.ruleName || rule.id,
+        name: rule.name || rule.id,
         scope: rule.scope || 'MEMBER',
         field: rule.field,
         operator: rule.operator,
         value: rule.value,
         aggregation: rule.aggregation || 'ANY',
       });
+    } else if (rule.type === 'COUNT_AT_LEAST') {
+      activeRules.push({
+        name: rule.name || 'Minimum Count per Team',
+        scope: 'MEMBER',
+        field: rule.field || 'declared_gender',
+        operator: '==',
+        value: rule.target_value || 'female',
+        aggregation: 'ANY',
+      });
+    } else if (rule.type === 'NUMBER_GTE') {
+      activeRules.push({
+        name: rule.name || 'Minimum Value Check',
+        scope: 'MEMBER',
+        field: rule.field || 'experience_years',
+        operator: '>=',
+        value: Number(rule.threshold || 1.0),
+        aggregation: 'ANY',
+      });
     }
   }
 
-  // Backend EvaluateDatasetRequest expects: { dataset_id, config: { top_x, weights, eligibility_rules } }
   return {
     dataset_id: Number(datasetId),
     config: {
@@ -259,18 +333,17 @@ export function buildEvaluatePayload(datasetId, topX, ruleSettings = [], weights
 
 /**
  * Executes the Decision Engine evaluation on an imported dataset.
- * POST /evaluations/evaluate or POST /evaluations
+ * POST /evaluations/evaluate (or POST /evaluations)
  */
 export async function evaluate(payload) {
   try {
-    return await request('/evaluations', {
+    return await request('/evaluations/evaluate', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
   } catch (err) {
     if (err.status === 404) {
-      // Fallback in case endpoint is /evaluations/evaluate
-      return await request('/evaluations/evaluate', {
+      return await request('/evaluations', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
@@ -280,26 +353,26 @@ export async function evaluate(payload) {
 }
 
 // ----------------------------------------------------------------------
-// Results & Sensitivity Endpoints
+// Results, Leaderboard, Overrides & Comparisons
 // ----------------------------------------------------------------------
 
 /**
  * Retrieves a previously evaluated run and its team rankings.
- * GET /evaluations/runs/{run_id} or GET /evaluations/{run_id}
+ * GET /evaluations/runs/{run_id}
  */
 export async function getRun(runId) {
   try {
-    return await request(`/evaluations/${runId}`);
+    return await request(`/evaluations/runs/${runId}`);
   } catch (err) {
     if (err.status === 404) {
-      return await request(`/evaluations/runs/${runId}`);
+      return await request(`/evaluations/${runId}`);
     }
     throw err;
   }
 }
 
 /**
- * Retrieves the high-performance leaderboard view for an evaluation run (includes team_size).
+ * Retrieves the high-performance leaderboard view for an evaluation run.
  * GET /evaluations/{run_id}/leaderboard
  */
 export async function getLeaderboard(runId) {
@@ -307,21 +380,48 @@ export async function getLeaderboard(runId) {
 }
 
 /**
- * Executes a "What-If" sensitivity simulation comparing base run with adjusted weights/top_x.
- * POST /evaluations/runs/{run_id}/sensitivity or POST /evaluations/{run_id}/sensitivity-preview
+ * Applies a manual reviewer override (pin, exclude, waitlist) to a team.
+ * POST /evaluations/runs/{run_id}/overrides
+ */
+export async function applyOverride(runId, teamIdOrCode, action, reason) {
+  return request(`/evaluations/runs/${runId}/overrides`, {
+    method: 'POST',
+    body: JSON.stringify({
+      team_id_or_code: String(teamIdOrCode),
+      action,
+      reason,
+    }),
+  });
+}
+
+/**
+ * Performs a head-to-head pairwise comparison between two evaluated teams.
+ * POST /evaluations/runs/{run_id}/compare
+ */
+export async function compareTeams(runId, teamAId, teamBId) {
+  return request(`/evaluations/runs/${runId}/compare`, {
+    method: 'POST',
+    body: JSON.stringify({
+      team_a_id: teamAId,
+      team_b_id: teamBId,
+    }),
+  });
+}
+
+/**
+ * Executes a sensitivity simulation comparing base run with adjusted weights/top_x.
+ * POST /evaluations/runs/{run_id}/sensitivity
  */
 export async function runSensitivity(runId, newConfig) {
-  // Support either raw ScoringConfig or wrapped { new_config }
   const body = newConfig.new_config ? newConfig : { new_config: newConfig };
-
   try {
-    return await request(`/evaluations/${runId}/sensitivity-preview`, {
+    return await request(`/evaluations/runs/${runId}/sensitivity`, {
       method: 'POST',
       body: JSON.stringify(body),
     });
   } catch (err) {
     if (err.status === 404) {
-      return await request(`/evaluations/runs/${runId}/sensitivity`, {
+      return await request(`/evaluations/${runId}/sensitivity-preview`, {
         method: 'POST',
         body: JSON.stringify(body),
       });
@@ -331,28 +431,24 @@ export async function runSensitivity(runId, newConfig) {
 }
 
 // ----------------------------------------------------------------------
-// CSV Export Endpoint
+// Exports Endpoints
 // ----------------------------------------------------------------------
 
 /**
- * Downloads the evaluated CSV file as a browser file attachment.
- * GET /evaluations/{run_id}/export (or GET /exports/runs/{run_id}/csv)
+ * Downloads evaluated results as an RFC 4180 CSV file or audit ZIP bundle.
  */
 export async function downloadCsv(runId, filename = null, type = 'full') {
   let endpoint;
-  let defaultExt = '.csv';
+  let defaultExt;
 
-  if (type === 'shortlist') {
-    endpoint = `/evaluations/${runId}/export/shortlist`;
-    defaultExt = '.csv';
-  } else if (type === 'bundle') {
+  if (type === 'bundle') {
     endpoint = `/evaluations/${runId}/export/bundle`;
     defaultExt = '.zip';
-  } else if (type === 'config') {
-    endpoint = `/evaluations/${runId}/export/config`;
-    defaultExt = '.json';
+  } else if (type === 'shortlist') {
+    endpoint = `/evaluations/${runId}/export/shortlist`;
+    defaultExt = '.csv';
   } else {
-    endpoint = `/evaluations/${runId}/export`;
+    endpoint = `/exports/evaluations/${runId}`;
     defaultExt = '.csv';
   }
 
@@ -361,30 +457,24 @@ export async function downloadCsv(runId, filename = null, type = 'full') {
     blob = await request(endpoint, { responseType: 'blob' });
   } catch (err) {
     if (err.status === 404) {
-      // Fallback to exports router path
       try {
-        blob = await request(`/exports/evaluations/${runId}`, { responseType: 'blob' });
-      } catch {
         blob = await request(`/exports/runs/${runId}/csv`, { responseType: 'blob' });
+      } catch {
+        blob = await request(`/evaluations/${runId}/export`, { responseType: 'blob' });
       }
     } else {
       throw err;
     }
   }
 
-  // Trigger file download in browser
   const blobUrl = window.URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = blobUrl;
   anchor.download =
     filename ||
-    (type === 'shortlist'
-      ? `shortlist_top_x_${runId}.csv`
-      : type === 'bundle'
-      ? `ShortlistIQ_Audit_Package_Run_${runId}.zip`
-      : type === 'config'
-      ? `Audit_Config_Manifest_Run_${runId}.json`
-      : `evaluation_run_${runId}.csv`);
+    (type === 'bundle'
+      ? `recruitment_audit_package_run_${runId}.zip`
+      : `evaluation_results_run_${runId}${defaultExt}`);
   document.body.appendChild(anchor);
   anchor.click();
   document.body.removeChild(anchor);
@@ -393,16 +483,54 @@ export async function downloadCsv(runId, filename = null, type = 'full') {
   return true;
 }
 
+// ----------------------------------------------------------------------
+// GitHub Profile & Enrichment Endpoints
+// ----------------------------------------------------------------------
+
+/**
+ * Fetches public developer profile metrics from GitHub.
+ * GET /github/profile?url_or_username=...
+ */
+export async function getGitHubProfile(urlOrUsername, forceRefresh = false) {
+  const params = new URLSearchParams({
+    url_or_username: urlOrUsername,
+    force_refresh: String(forceRefresh),
+  });
+  return request(`/github/profile?${params.toString()}`);
+}
+
+/**
+ * Enriches candidate profile and generates Core Decision Engine signals.
+ * POST /github/enrich
+ */
+export async function enrichGitHub(urlOrUsername, forceRefresh = false) {
+  return request('/github/enrich', {
+    method: 'POST',
+    body: JSON.stringify({
+      url_or_username: urlOrUsername,
+      force_refresh: forceRefresh,
+    }),
+  });
+}
+
 export default {
   getCampaigns,
   createCampaign,
+  getSession,
+  getSessionHistory,
+  resetSession,
   uploadImport,
+  getDataset,
   getQualityReport,
   getRulesCatalog,
   evaluate,
   buildEvaluatePayload,
   getRun,
   getLeaderboard,
+  applyOverride,
+  compareTeams,
   runSensitivity,
   downloadCsv,
+  getGitHubProfile,
+  enrichGitHub,
 };

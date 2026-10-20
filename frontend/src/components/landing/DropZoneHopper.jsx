@@ -1,8 +1,13 @@
 import { useState, useRef } from 'react';
+import { SAMPLE_HACKATHON_CSV } from '../../data/sampleHackathonCsv';
+import { uploadImport } from '../../api/client';
+import { useApp } from '../../context/AppContext';
 
-export default function DropZoneHopper({ onLoadDemo, onFileUpload, isIngesting }) {
+export default function DropZoneHopper({ onUploadSuccess, onError, isIngesting }) {
+  const { campaignId, setDatasetId, setUploadedDataset, navigateWithState } = useApp();
   const [isDragOver, setIsDragOver] = useState(false);
   const [fileFeedback, setFileFeedback] = useState(null);
+  const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
 
   const handleDragOver = (e) => {
@@ -31,18 +36,79 @@ export default function DropZoneHopper({ onLoadDemo, onFileUpload, isIngesting }
     }
   };
 
-  const processFile = (file) => {
-    setFileFeedback(`Parsing ${file.name} (${(file.size / 1024).toFixed(1)} KB)...`);
-    if (onFileUpload) {
-      onFileUpload(file);
-    } else {
-      setTimeout(() => {
-        onLoadDemo();
-        setFileFeedback(`Successfully ingested 482 teams from ${file.name}`);
-        setTimeout(() => setFileFeedback(null), 3000);
-      }, 500);
+  const processFile = async (file) => {
+    // 1. Extension validation
+    const name = file.name.toLowerCase();
+    if (!name.endsWith('.csv') && !name.endsWith('.json')) {
+      const err = 'Unsupported file format. Please upload a .CSV or .JSON candidate registration file.';
+      setFileFeedback(err);
+      if (onError) onError(err);
+      return;
+    }
+
+    // 2. Size validation (10 MB cap)
+    const MAX_SIZE = 10 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      const err = `File size (${(file.size / (1024 * 1024)).toFixed(2)} MB) exceeds the 10 MB limit.`;
+      setFileFeedback(err);
+      if (onError) onError(err);
+      return;
+    }
+
+    setUploading(true);
+    setFileFeedback(`Uploading and parsing ${file.name} (${(file.size / 1024).toFixed(1)} KB)...`);
+
+    try {
+      const result = await uploadImport(file, file.name, campaignId);
+      const datasetId = result.dataset_id;
+      setDatasetId(datasetId);
+      setUploadedDataset(result);
+      setFileFeedback(`✓ Successfully imported ${result.total_teams} teams (${result.total_records || 'all'} members)!`);
+
+      if (onUploadSuccess) {
+        onUploadSuccess(result);
+      } else {
+        setTimeout(() => {
+          navigateWithState('/schema-mapper', { datasetId });
+        }, 500);
+      }
+    } catch (err) {
+      const msg = err.message || 'File upload failed. Please verify CSV/JSON formatting.';
+      setFileFeedback(`Error: ${msg}`);
+      if (onError) onError(msg);
+    } finally {
+      setUploading(false);
     }
   };
+
+  const handleLoadSample = async () => {
+    setUploading(true);
+    setFileFeedback('⚡ Uploading canonical Hackathon sample dataset (8 teams, 25 members)...');
+
+    try {
+      const result = await uploadImport(SAMPLE_HACKATHON_CSV, 'sample_hackathon_registrations.csv', campaignId);
+      const datasetId = result.dataset_id;
+      setDatasetId(datasetId);
+      setUploadedDataset(result);
+      setFileFeedback(`✓ Successfully imported sample dataset (${result.total_teams} teams)!`);
+
+      if (onUploadSuccess) {
+        onUploadSuccess(result);
+      } else {
+        setTimeout(() => {
+          navigateWithState('/schema-mapper', { datasetId });
+        }, 500);
+      }
+    } catch (err) {
+      const msg = err.message || 'Failed to load sample dataset.';
+      setFileFeedback(`Error: ${msg}`);
+      if (onError) onError(msg);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const busy = uploading || isIngesting;
 
   return (
     <div className="w-full bg-white retro-border-thick rounded-3xl p-6 md:p-10 shadow-pop-lg relative overflow-hidden">
@@ -53,11 +119,11 @@ export default function DropZoneHopper({ onLoadDemo, onFileUpload, isIngesting }
           <span className="w-3.5 h-3.5 rounded-full bg-brand-yellow retro-border"></span>
           <span className="w-3.5 h-3.5 rounded-full bg-brand-green retro-border"></span>
           <span className="ml-2 font-mono text-xs font-bold uppercase tracking-wider text-slate-500">
-            INGESTION_STATION_v2.4.exe
+            INGESTION_STATION_v2.0.exe
           </span>
         </div>
         <span className="px-3 py-0.5 rounded-full bg-brand-purple/10 text-brand-purple font-mono font-bold text-xs retro-border">
-          TAIKAI • DEVPOST • CUSTOM CSV
+          PUBLIC • NO LOGIN REQUIRED • CSV / JSON
         </span>
       </div>
 
@@ -76,8 +142,10 @@ export default function DropZoneHopper({ onLoadDemo, onFileUpload, isIngesting }
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
-        className={`mt-6 border-4 border-dashed border-brand-dark rounded-2xl p-8 md:p-12 text-center flex flex-col items-center justify-center gap-5 transition-all group cursor-pointer ${
+        onClick={() => !busy && fileInputRef.current?.click()}
+        className={`mt-6 border-4 border-dashed border-brand-dark rounded-2xl p-8 md:p-12 text-center flex flex-col items-center justify-center gap-5 transition-all group ${
+          busy ? 'opacity-80 cursor-wait' : 'cursor-pointer'
+        } ${
           isDragOver
             ? 'bg-yellow-100 border-brand-blue scale-[1.01]'
             : 'bg-brand-cream/80 hover:bg-yellow-50/50'
@@ -85,21 +153,31 @@ export default function DropZoneHopper({ onLoadDemo, onFileUpload, isIngesting }
       >
         <div
           className={`w-20 h-20 rounded-2xl bg-brand-yellow retro-border shadow-pop flex items-center justify-center text-brand-dark transition-transform ${
-            isIngesting ? 'animate-bounce' : 'group-hover:scale-110 group-hover:-rotate-3'
+            busy ? 'animate-bounce' : 'group-hover:scale-110 group-hover:-rotate-3'
           }`}
         >
-          <span className="material-symbols-outlined text-4xl font-bold">cloud_upload</span>
+          <span className="material-symbols-outlined text-4xl font-bold">
+            {busy ? 'hourglass_top' : 'cloud_upload'}
+          </span>
         </div>
 
         <div className="flex flex-col gap-1 max-w-lg">
           <h3 className="font-display font-extrabold text-2xl text-brand-dark">
-            Drop Submission Matrix or Click to Ingest
+            {busy ? 'Ingesting Dataset into Backend Engine...' : 'Drop Registration File or Click to Ingest'}
           </h3>
           <p className="font-sans text-sm text-slate-600 font-medium">
-            Supports messy .CSV, .JSON exports, and Discord/Taikai rubrics. Auto-matches judge vectors and checks GitHub links instantly.
+            Upload CSV or JSON candidate submissions. The backend automatically extracts teams, validates roster bounds, and normalizes candidate profiles.
           </p>
           {fileFeedback && (
-            <div className="mt-2 text-xs font-mono font-bold text-brand-blue bg-white px-3 py-1 rounded retro-border inline-block self-center shadow-pop-sm">
+            <div
+              className={`mt-2 text-xs font-mono font-bold px-3 py-1.5 rounded-lg retro-border inline-block self-center shadow-pop-sm ${
+                fileFeedback.startsWith('Error')
+                  ? 'bg-rose-100 text-rose-800'
+                  : fileFeedback.startsWith('✓')
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : 'bg-brand-yellow text-brand-dark'
+              }`}
+            >
               {fileFeedback}
             </div>
           )}
@@ -108,37 +186,39 @@ export default function DropZoneHopper({ onLoadDemo, onFileUpload, isIngesting }
         <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
           <button
             type="button"
+            disabled={busy}
             onClick={(e) => {
               e.stopPropagation();
               fileInputRef.current?.click();
             }}
-            className="px-6 py-3 bg-brand-yellow hover:bg-yellow-300 text-brand-dark font-display font-black text-sm md:text-base rounded-xl retro-border shadow-pop hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-pop-hover active:shadow-none transition-all flex items-center gap-2 cursor-pointer"
+            className="px-6 py-3 bg-brand-yellow hover:bg-yellow-300 text-brand-dark font-display font-black text-sm md:text-base rounded-xl retro-border shadow-pop hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-pop-hover active:shadow-none transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
           >
             <span className="material-symbols-outlined text-lg font-bold">folder_open</span>
-            Select Submission Matrix
+            Select CSV or JSON File
           </button>
           <button
             id="quick-demo-btn"
             type="button"
+            disabled={busy}
             onClick={(e) => {
               e.stopPropagation();
-              onLoadDemo();
+              handleLoadSample();
             }}
-            className="px-5 py-3 bg-white hover:bg-slate-50 text-brand-dark font-display font-bold text-sm md:text-base rounded-xl retro-border shadow-pop hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-pop-hover active:shadow-none transition-all flex items-center gap-2 cursor-pointer"
+            className="px-5 py-3 bg-white hover:bg-slate-50 text-brand-dark font-display font-bold text-sm md:text-base rounded-xl retro-border shadow-pop hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-pop-hover active:shadow-none transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
           >
             <span className="material-symbols-outlined text-brand-blue text-lg font-bold">
               play_circle
             </span>
-            Load Demo Matrix (482 Teams)
+            ⚡ Use Sample Registrations (25 Candidates)
           </button>
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-2 pt-2 text-xs font-mono font-bold text-slate-500">
-          <span className="bg-white px-2.5 py-1 rounded retro-border">MAX 128 MB</span>
+          <span className="bg-white px-2.5 py-1 rounded retro-border">MAX 10 MB</span>
           <span>•</span>
-          <span className="bg-white px-2.5 py-1 rounded retro-border">IN-MEMORY LOCAL SANDBOX</span>
+          <span className="bg-white px-2.5 py-1 rounded retro-border">EXPLAINABLE FASTAPI ENGINE</span>
           <span>•</span>
-          <span className="bg-white px-2.5 py-1 rounded retro-border">100% PRIVATE</span>
+          <span className="bg-white px-2.5 py-1 rounded retro-border">ANONYMOUS & PRIVATE</span>
         </div>
       </div>
     </div>
