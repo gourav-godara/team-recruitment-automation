@@ -354,6 +354,12 @@ def evaluate_operator(actual: Any, op: RuleOperator, expected: Any) -> bool:
                     f"received {type(expected).__name__}: {expected!r}"
                 )
             return actual not in expected
+        elif op == RuleOperator.BETWEEN:
+            if not isinstance(expected, (list, tuple)) or len(expected) != 2:
+                return False
+            if not is_numeric(actual) or not is_numeric(expected[0]) or not is_numeric(expected[1]):
+                return False
+            return expected[0] <= actual <= expected[1]
     except (TypeError, ValueError) as e:
         if isinstance(e, ValueError) and "collection" in str(e):
             raise

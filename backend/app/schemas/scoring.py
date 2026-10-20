@@ -50,6 +50,7 @@ class RuleOperator(str, Enum):
     NOT_IN = "NOT_IN"
     EXISTS = "EXISTS"
     NOT_EXISTS = "NOT_EXISTS"
+    BETWEEN = "BETWEEN"
 
 
 class RuleStatus(str, Enum):
@@ -218,6 +219,12 @@ class RuleConfig(BaseModel):
                 raise ValueError(
                     f"Rule '{self.name}' with operator '{self.operator.value}' requires 'value' "
                     f"to be a collection (list, tuple, or set), received {type(self.value).__name__}."
+                )
+        if self.operator == RuleOperator.BETWEEN:
+            if self.value is not None and (not isinstance(self.value, (list, tuple)) or len(self.value) != 2):
+                raise ValueError(
+                    f"Rule '{self.name}' with operator 'BETWEEN' requires 'value' to be a pair [min, max], "
+                    f"received {type(self.value).__name__}: {self.value!r}."
                 )
         return self
 

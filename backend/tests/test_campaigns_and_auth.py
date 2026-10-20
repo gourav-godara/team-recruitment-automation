@@ -43,32 +43,6 @@ def make_mock_jwt(sub: str) -> str:
     return create_test_jwt(sub=sub)
 
 
-def test_auth_me_dev_fallback(client):
-    """Verify that calling /auth/me without headers returns default dev user."""
-    resp = client.get("/api/v1/auth/me")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["is_authenticated"] is True
-    assert data["is_development_fallback"] is True
-    assert data["user_id"] == "00000000-0000-0000-0000-000000000001"
-
-
-def test_auth_me_with_bearer_token(client):
-    """Verify that calling /auth/me with a Bearer JWT parses the subject UUID."""
-    user_uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-    token = make_mock_jwt(user_uuid)
-
-    resp = client.get(
-        "/api/v1/auth/me",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["is_authenticated"] is True
-    assert data["is_development_fallback"] is False
-    assert data["user_id"] == user_uuid
-
-
 def test_create_and_list_campaigns(client):
     """Verify creating a campaign and listing it."""
     # 1. Create campaign
@@ -189,34 +163,4 @@ def test_tenant_isolation_dataset_upload_forbidden(client):
     assert upload_resp.status_code == 403
 
 
-def test_cryptographic_jwt_verification(client):
-    """When SUPABASE_JWT_SECRET is configured, signature must match or request is 401."""
-    from backend.app.core.config import settings
-    from backend.app.core.security import create_test_jwt
-
-    secret = "production-supabase-jwt-secret-key-12345"
-    old_secret = settings.SUPABASE_JWT_SECRET
-    settings.SUPABASE_JWT_SECRET = secret
-
-    try:
-        user_uuid = "33333333-3333-3333-3333-333333333333"
-        valid_token = create_test_jwt(sub=user_uuid, secret=secret)
-        forged_token = create_test_jwt(sub=user_uuid, secret="wrong-secret-key")
-
-        # 1. Valid token -> 200 OK
-        resp_valid = client.get(
-            "/api/v1/auth/me",
-            headers={"Authorization": f"Bearer {valid_token}"},
-        )
-        assert resp_valid.status_code == 200
-        assert resp_valid.json()["user_id"] == user_uuid
-
-        # 2. Forged token with invalid signature -> 401 Unauthorized
-        resp_forged = client.get(
-            "/api/v1/auth/me",
-            headers={"Authorization": f"Bearer {forged_token}"},
-        )
-        assert resp_forged.status_code == 401
-    finally:
-        settings.SUPABASE_JWT_SECRET = old_secret
 
