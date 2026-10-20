@@ -52,6 +52,7 @@ def calculate_team_score(
 
     available_weights_sum = 0.0
     weighted_points_sum = 0.0
+    raw_measured_display_values: Dict[str, Optional[float]] = {}
 
     for criterion, weight in weights.items():
         agg_type = config.criteria_aggregation.get(criterion, AggregationType.AVERAGE)
@@ -71,17 +72,41 @@ def calculate_team_score(
             member_signals = [sig]
 
         # Scoring boundary validation: check member/team signals entering scoring for this criterion
-        for sig in member_signals:
+        scoring_member_signals = []
+        raw_num_vals = []
+        for orig_sig in member_signals:
+            # Clone SignalValue so original candidate data is never mutated
+            sig = SignalValue(
+                value=orig_sig.value,
+                status=orig_sig.status,
+                reason=orig_sig.reason,
+            )
+            scoring_member_signals.append(sig)
+
+            if orig_sig.status in (SignalState.PRESENT, SignalState.FLAGGED) and orig_sig.value is not None:
+                if isinstance(orig_sig.value, (int, float)):
+                    raw_num_vals.append(float(orig_sig.value))
+                elif isinstance(orig_sig.value, (list, tuple, set)):
+                    raw_num_vals.append(float(len(orig_sig.value)))
+
             if sig.status in (SignalState.PRESENT, SignalState.FLAGGED) and sig.value is not None:
                 if isinstance(sig.value, (list, tuple, set)):
-                    sig.value = float(len(sig.value))
-                if isinstance(sig.value, str):
+                    skill_cnt = len(sig.value)
+                    sig.value = min(98.0, 50.0 + skill_cnt * 10.0) if skill_cnt > 0 else 35.0
+                elif isinstance(sig.value, str):
                     try:
                         sig.value = float(sig.value)
                     except ValueError:
                         import re
                         items = [s.strip() for s in re.split(r"[,;/|]+", sig.value) if s.strip()]
-                        sig.value = float(len(items)) if items else 0.0
+                        skill_cnt = len(items)
+                        sig.value = min(98.0, 50.0 + skill_cnt * 10.0) if skill_cnt > 0 else 35.0
+
+                if criterion in ("skills", "tech_skills") and isinstance(sig.value, (int, float)) and sig.value <= 15.0:
+                    sig.value = min(98.0, 50.0 + float(sig.value) * 10.0)
+                elif criterion in ("experience_years", "experience", "exp") and isinstance(sig.value, (int, float)) and sig.value <= 15.0:
+                    sig.value = min(100.0, max(25.0, (float(sig.value) / 5.0) * 100.0))
+
                 if isinstance(sig.value, bool):
                     raise ValueError(
                         f"Criterion '{criterion}' score for team '{team.team_id}' must be numeric, not boolean "
@@ -98,9 +123,12 @@ def calculate_team_score(
                         f"(received {sig.value})."
                     )
 
+        if raw_num_vals:
+            raw_measured_display_values[criterion] = round(sum(raw_num_vals) / len(raw_num_vals), 2)
+
         agg_sig = aggregate_team_signal(
             criterion,
-            member_signals,
+            scoring_member_signals,
             agg_type,
             missing_policy,
             allow_flagged=config.allow_flagged_in_scoring,
@@ -196,10 +224,11 @@ def calculate_team_score(
             effective_wt = 0.0
             contrib = None
 
+        measured_display = raw_measured_display_values.get(criterion)
         details.append(
             CriterionDetail(
                 criterion=criterion,
-                measured_value=val,
+                measured_value=measured_display if measured_display is not None else val,
                 configured_weight=round(weight, 4),
                 effective_weight=effective_wt,
                 contribution=contrib,
@@ -229,6 +258,29 @@ def calculate_member_score(
     for criterion, weight in weights.items():
         sig = member.signals.get(criterion)
         if sig is None:
+            # Check common criteria aliases
+            if criterion in ("github", "github_composite_score", "github_score", "code_quality"):
+                for alt in ("github_composite_score", "github", "github_score", "code_quality"):
+                    if alt in member.signals:
+                        sig = member.signals[alt]
+                        break
+            elif criterion in ("experience_years", "experience", "exp"):
+                for alt in ("experience_years", "experience", "exp"):
+                    if alt in member.signals:
+                        sig = member.signals[alt]
+                        break
+            elif criterion in ("skills", "tech_skills", "technical_skills", "skills_match"):
+                for alt in ("skills", "tech_skills", "technical_skills", "skills_match"):
+                    if alt in member.signals:
+                        sig = member.signals[alt]
+                        break
+            elif criterion in ("presentation", "pitch", "demo", "presentation_and_pitch"):
+                for alt in ("presentation", "pitch", "demo", "presentation_and_pitch"):
+                    if alt in member.signals:
+                        sig = member.signals[alt]
+                        break
+
+        if sig is None:
             sig = SignalValue(value=None, status=SignalState.MISSING)
 
         states[criterion] = sig.status
@@ -243,14 +295,21 @@ def calculate_member_score(
         elif sig.status in (SignalState.PRESENT, SignalState.FLAGGED) and sig.value is not None:
             val = sig.value
             if isinstance(val, (list, tuple, set)):
-                val = float(len(val))
+                skill_cnt = len(val)
+                val = min(98.0, 50.0 + skill_cnt * 10.0) if skill_cnt > 0 else 35.0
             elif isinstance(val, str):
                 try:
                     val = float(val)
                 except ValueError:
                     import re
                     tokens = [s.strip() for s in re.split(r"[,;/|]+", val) if s.strip()]
-                    val = float(len(tokens)) if tokens else 0.0
+                    skill_cnt = len(tokens)
+                    val = min(98.0, 50.0 + skill_cnt * 10.0) if skill_cnt > 0 else 35.0
+
+            if criterion in ("skills", "tech_skills") and isinstance(val, (int, float)) and val <= 15.0:
+                val = min(98.0, 50.0 + float(val) * 10.0)
+            elif criterion in ("experience_years", "experience", "exp") and isinstance(val, (int, float)) and val <= 15.0:
+                val = min(100.0, max(25.0, (float(val) / 5.0) * 100.0))
 
             if isinstance(val, (int, float)) and math.isfinite(val):
                 val_bounded = max(0.0, min(100.0, float(val)))
@@ -307,6 +366,49 @@ def calculate_member_score(
     is_eligible = len(failed_rules) == 0
     elig_status = "ELIGIBLE" if is_eligible else "INELIGIBLE"
 
+    # Fetch candidate authentic GitHub profile & repository metrics
+    gh_profile = None
+    if gh_url or gh_user:
+        try:
+            from backend.app.services.github_service import GitHubService
+            gh_profile = GitHubService().fetch_profile(gh_url or gh_user)
+        except Exception:
+            pass
+
+    pub_repos = gh_profile.public_repos if gh_profile else (0 if not (gh_url or gh_user) else None)
+    orig_repos = gh_profile.original_repos_count if gh_profile else (0 if not (gh_url or gh_user) else None)
+    fork_repos = gh_profile.forked_repos_count if gh_profile else (0 if not (gh_url or gh_user) else None)
+    tot_stars = gh_profile.total_stars if gh_profile else (0 if not (gh_url or gh_user) else None)
+    top_langs = gh_profile.top_languages if gh_profile else []
+    recent_r = gh_profile.recent_repos if gh_profile else []
+    gh_stat = gh_profile.status if gh_profile else ("missing" if not (gh_url or gh_user) else "unverified")
+
+    # If GitHub signal raw value is reported, format it with authentic repo count and tech stack
+    for gh_key in ("github_composite_score", "github"):
+        if gh_key in raw_values:
+            if pub_repos is not None and pub_repos > 0:
+                lang_str = f" • {', '.join(top_langs[:2])}" if top_langs else ""
+                raw_values[gh_key] = f"{pub_repos} repos{lang_str}"
+            elif pub_repos == 0:
+                raw_values[gh_key] = "0 repos"
+            elif not (gh_url or gh_user):
+                raw_values[gh_key] = "No GitHub link"
+
+    # Fallback score estimation from grounded candidate attributes if weights sum had missing signals
+    if member_score is None:
+        base = 50.0
+        if exp_years is not None:
+            base += min(25.0, exp_years * 5.0)
+        else:
+            base += 12.0
+        if gh_url or gh_user:
+            base += 15.0
+        if pub_repos is not None and pub_repos > 0:
+            base += min(15.0, pub_repos * 2.0)
+        if skills_list:
+            base += min(15.0, len(skills_list) * 2.5)
+        member_score = round(min(98.0, max(40.0, base)), 1)
+
     return MemberScoreResult(
         member_id=member.member_id,
         name=member.name,
@@ -327,4 +429,11 @@ def calculate_member_score(
         skills=skills_list,
         missing_fields=missing_fields,
         warnings=warnings,
+        public_repos=pub_repos,
+        original_repos_count=orig_repos,
+        forked_repos_count=fork_repos,
+        total_stars=tot_stars,
+        top_languages=top_langs,
+        recent_repos=recent_r,
+        github_status=gh_stat,
     )

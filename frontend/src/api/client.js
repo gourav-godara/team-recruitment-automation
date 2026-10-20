@@ -76,6 +76,23 @@ async function request(endpoint, options = {}) {
       if (errorJson.detail) {
         if (typeof errorJson.detail === 'string') {
           errorDetail = errorJson.detail;
+        } else if (Array.isArray(errorJson.detail)) {
+          // Cleanly format FastAPI / Pydantic validation errors into plain recruiter English
+          const msgs = errorJson.detail.map((err) => {
+            let msg = err.msg || err.message || '';
+            msg = msg.replace(/^Value error,\s*/i, '');
+            if (msg.toLowerCase().includes('weights must sum to 1.0') || msg.toLowerCase().includes('must sum to 1')) {
+              return 'Scoring criteria weights must add up to 100%. Click the "Auto-Balance" button to auto-adjust.';
+            }
+            if (err.loc && Array.isArray(err.loc)) {
+              const field = err.loc[err.loc.length - 1];
+              if (field && !msg.toLowerCase().includes(field.toLowerCase())) {
+                return `${field}: ${msg}`;
+              }
+            }
+            return msg;
+          }).filter(Boolean);
+          errorDetail = msgs.length > 0 ? msgs.join('. ') : 'Validation error in request parameters.';
         } else if (errorJson.detail.message) {
           errorDetail = errorJson.detail.message;
         } else {
@@ -88,6 +105,8 @@ async function request(endpoint, options = {}) {
       const text = await response.text();
       if (text) errorDetail = text;
     }
+    // Clean any remaining raw Pydantic prefix
+    errorDetail = errorDetail.replace(/^Value error,\s*/i, '');
     const error = new Error(errorDetail);
     error.status = response.status;
     throw error;

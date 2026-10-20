@@ -341,6 +341,13 @@ class MemberScoreResult(BaseModel):
     skills: List[str] = Field(default_factory=list)
     missing_fields: List[str] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
+    public_repos: Optional[int] = None
+    original_repos_count: Optional[int] = None
+    forked_repos_count: Optional[int] = None
+    total_stars: Optional[int] = None
+    top_languages: List[str] = Field(default_factory=list)
+    recent_repos: List[Dict[str, Any]] = Field(default_factory=list)
+    github_status: Optional[str] = None
 
 
 class TeamScoreResult(BaseModel):

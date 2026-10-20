@@ -261,8 +261,9 @@ def adapt_team_data_to_engine_team(t: TeamData) -> Team:
     """Converts a data_processing TeamData instance into an engine Team entity."""
     members = [adapt_member_data_to_engine_member(m) for m in t.members]
 
+    actual_size = len(members) if members else (t.team_size or 0)
     team_signals: Dict[str, SignalValue] = {
-        "team_size": SignalValue(value=t.team_size, status=SignalState.PRESENT),
+        "team_size": SignalValue(value=actual_size, status=SignalState.PRESENT),
     }
 
     if t.lead_email:

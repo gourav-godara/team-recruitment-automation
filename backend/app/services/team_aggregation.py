@@ -16,6 +16,12 @@ def is_numeric(val: Any) -> bool:
         return False
     if isinstance(val, (int, float)):
         return math.isfinite(val)
+    if isinstance(val, str):
+        try:
+            f = float(val)
+            return math.isfinite(f)
+        except (ValueError, TypeError):
+            return False
     return False
 
 
@@ -355,11 +361,14 @@ def evaluate_operator(actual: Any, op: RuleOperator, expected: Any) -> bool:
                 )
             return actual not in expected
         elif op == RuleOperator.BETWEEN:
+            if isinstance(expected, str) and "-" in expected:
+                parts = expected.split("-")
+                expected = [parts[0].strip(), parts[1].strip()]
             if not isinstance(expected, (list, tuple)) or len(expected) != 2:
                 return False
             if not is_numeric(actual) or not is_numeric(expected[0]) or not is_numeric(expected[1]):
                 return False
-            return expected[0] <= actual <= expected[1]
+            return float(expected[0]) <= float(actual) <= float(expected[1])
     except (TypeError, ValueError) as e:
         if isinstance(e, ValueError) and "collection" in str(e):
             raise

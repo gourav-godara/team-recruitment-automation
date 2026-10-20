@@ -31,3 +31,98 @@
 html {
   scroll-behavior: smooth;
 }
+
+/* Custom Neo-Brutalist & Cyber Loader Animations (Strictly Forward / Rightward Flow) */
+@keyframes hazardMove {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: -40px 0;
+  }
+}
+
+.animate-hazard-stripes {
+  background: repeating-linear-gradient(
+    45deg,
+    #1D4ED8,
+    #1D4ED8 12px,
+    #2563EB 12px,
+    #2563EB 24px
+  );
+  background-size: 40px 40px;
+  animation: hazardMove 0.9s linear infinite;
+}
+
+.animate-hazard-yellow {
+  background: repeating-linear-gradient(
+    -45deg,
+    #FDE047,
+    #FDE047 12px,
+    #FACC15 12px,
+    #FACC15 24px
+  );
+  background-size: 40px 40px;
+  animation: hazardMove 1.2s linear infinite;
+}
+
+@keyframes reticleRotate {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-reticle-spin {
+  animation: reticleRotate 8s linear infinite;
+}
+
+@keyframes radarSweep {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-radar-sweep {
+  transform-origin: center;
+  animation: radarSweep 2.4s linear infinite;
+}
+
+@keyframes scanlineBeam {
+  0% {
+    top: 0%;
+    opacity: 0.8;
+  }
+  50% {
+    top: 96%;
+    opacity: 0.4;
+  }
+  100% {
+    top: 0%;
+    opacity: 0.8;
+  }
+}
+
+.animate-scanline-beam {
+  animation: scanlineBeam 2s ease-in-out infinite;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out forwards;
+}

@@ -32,6 +32,9 @@ def evaluate_single_rule(team: Team, rule: RuleConfig) -> RuleResult:
     # 1. Handle TEAM scope
     if rule.scope == RuleScope.TEAM:
         signal = team.team_signals.get(rule.field)
+        if rule.field == "team_size" and (signal is None or signal.value is None or signal.status == SignalState.MISSING):
+            if team.members:
+                signal = SignalValue(value=len(team.members), status=SignalState.PRESENT)
         if signal is None or signal.status == SignalState.MISSING or signal.value is None:
             if rule.missing_policy == MissingDataPolicy.REQUIRE:
                 return RuleResult(

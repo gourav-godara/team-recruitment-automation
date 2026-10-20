@@ -178,9 +178,19 @@ async def upload_import(
                 detail={"error": "Database Persistence Error", "message": str(e)},
             )
 
+    # Fast in-memory data quality computation to return instant report without extra HTTP roundtrip
+    quality_report_dict = None
+    try:
+        quality_service = DataQualityService()
+        qr = quality_service.analyze_teams(import_result.teams)
+        quality_report_dict = qr.model_dump()
+    except Exception:
+        pass
+
     return {
         "status": "success",
         "import_id": dataset_id,
+        "dataset_id": dataset_id,
         "session_id": session_id,
         "dataset_hash": file_hash,
         "filename": filename,
@@ -190,6 +200,7 @@ async def upload_import(
         "invalid_teams_count": import_result.invalid_teams_count,
         "summary": import_result.summary,
         "global_warnings": import_result.global_warnings,
+        "quality_report": quality_report_dict,
         "teams": [t.to_dict() for t in import_result.teams],
     }
 
