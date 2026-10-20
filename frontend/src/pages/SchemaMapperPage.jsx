@@ -7,15 +7,22 @@ import SchemaMappingTable from '../components/schema/SchemaMappingTable';
 import SchemaFooterActions from '../components/schema/SchemaFooterActions';
 import QuickPreviewModal from '../components/schema/QuickPreviewModal';
 import ReuploadModal from '../components/schema/ReuploadModal';
-import { mockDatasetInfo, initialSchemaFields } from '../data/mockSchema';
+import { DEFAULT_SCHEMA_FIELDS } from '../config/schemaDefaults';
 import { uploadImport, getDataset } from '../api/client';
 import { useApp } from '../context/AppContext';
 
 export default function SchemaMapperPage({ onNavigateHome, onProceedToQualityCheck }) {
   const navigate = useNavigate();
   const { campaignId, datasetId, setDatasetId, navigateWithState } = useApp();
-  const [datasetInfo, setDatasetInfo] = useState(mockDatasetInfo);
-  const [fields, setFields] = useState(initialSchemaFields);
+  const [datasetInfo, setDatasetInfo] = useState({
+    id: datasetId || '1',
+    name: 'registrations.csv',
+    batch_filename: 'registrations.csv',
+    source_format: 'csv',
+    total_teams: 0,
+    file_hash_short: 'sealed',
+  });
+  const [fields, setFields] = useState(DEFAULT_SCHEMA_FIELDS);
   const [granularity, setGranularity] = useState('team'); // 'team' | 'member'
   const [activeStage, setActiveStage] = useState('import-schema');
   const [showQuickPreview, setShowQuickPreview] = useState(false);
@@ -76,7 +83,7 @@ export default function SchemaMapperPage({ onNavigateHome, onProceedToQualityChe
 
   // Reset mappings to raw inference
   const handleResetMap = () => {
-    setFields(initialSchemaFields);
+    setFields(DEFAULT_SCHEMA_FIELDS);
     showNotification('↺ Schema mappings reset to raw initial inference.');
   };
 
@@ -221,32 +228,31 @@ export default function SchemaMapperPage({ onNavigateHome, onProceedToQualityChe
                   </span>
                 </div>
                 <h1 className="font-headline-lg text-headline-lg text-on-surface tracking-tight mt-1 font-extrabold">
-                  Schema Mapper &amp; Granularity Controls
+                  Schema Column Mapping
                 </h1>
                 <p className="font-body-sm text-body-sm text-on-surface-variant font-medium">
-                  Batch Payload:{' '}
+                  Dataset:{' '}
                   <span className="font-mono font-bold text-on-surface bg-surface-container px-1.5 py-0.5 rounded border border-[#0f172a]">
-                    {datasetInfo.batch_filename}
+                    {datasetInfo?.batch_filename || datasetInfo?.name || 'registrations.csv'}
                   </span>{' '}
-                  • {datasetInfo.total_teams} teams registered across {datasetInfo.tracks_count} tracks •{' '}
-                  {datasetInfo.verified_hackers.toLocaleString()} verified hackers
+                  • {datasetInfo?.total_teams || 0} candidate teams loaded
                 </p>
               </div>
 
-              {/* Live Telemetry Capsule */}
+              {/* Live Status Capsule */}
               <div className="flex items-center gap-space-sm bg-surface-container-lowest p-2 rounded-lg border-2 border-[#0f172a] shadow-[3px_3px_0px_#0f172a] shrink-0">
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-surface-container rounded border-2 border-[#0f172a]">
                   <span className="w-2.5 h-2.5 rounded-full bg-[#10b981] animate-pulse"></span>
                   <span className="font-label-sm text-label-sm font-mono text-on-surface font-bold uppercase tracking-wider">
-                    Parser Live
+                    Parser Active
                   </span>
                 </div>
                 <div className="flex flex-col text-right px-2">
                   <span className="font-label-sm text-label-sm text-on-surface-variant font-mono">
-                    Parser Latency
+                    Status
                   </span>
                   <span className="font-label-md text-label-md font-mono font-bold text-primary">
-                    {datasetInfo.parser_latency}
+                    {datasetInfo?.total_teams ? 'Ready for Scoring' : 'Loaded'}
                   </span>
                 </div>
               </div>

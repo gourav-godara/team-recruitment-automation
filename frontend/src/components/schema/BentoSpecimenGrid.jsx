@@ -33,11 +33,11 @@ export default function BentoSpecimenGrid({
           <div className="flex items-start justify-between">
             <div>
               <div className="font-mono text-headline-sm font-headline-sm text-on-surface font-bold">
-                {datasetInfo.name}
+                {datasetInfo?.name || 'registrations.csv'}
               </div>
               <div className="font-body-sm text-body-sm text-on-surface-variant mt-0.5">
-                Payload footprint: <strong className="text-on-surface">{datasetInfo.file_size}</strong> • Raw row count:{' '}
-                <strong className="text-on-surface">{datasetInfo.total_teams} items</strong>
+                Payload format: <strong className="text-on-surface">{datasetInfo?.source_format || 'CSV'}</strong> • Teams imported:{' '}
+                <strong className="text-on-surface">{datasetInfo?.total_teams || 0} teams</strong>
               </div>
             </div>
             <div className="w-10 h-10 rounded-lg bg-surface-container-high border-2 border-[#0f172a] shadow-[2px_2px_0px_#0f172a] flex items-center justify-center font-mono font-bold text-primary">
@@ -53,7 +53,7 @@ export default function BentoSpecimenGrid({
             </div>
             <div className="flex items-center gap-1.5 p-2 rounded bg-surface-container-low border border-[#0f172a]">
               <span className="material-symbols-outlined text-sm text-[#10b981] font-bold">check_circle</span>
-              <span className="text-on-surface font-semibold">{datasetInfo.delimiter}</span>
+              <span className="text-on-surface font-semibold">{datasetInfo?.delimiter || 'Comma [,]'}</span>
             </div>
             <div className="flex items-center gap-1.5 p-2 rounded bg-surface-container-low border border-[#0f172a]">
               <span className="material-symbols-outlined text-sm text-[#10b981] font-bold">check_circle</span>
@@ -61,7 +61,7 @@ export default function BentoSpecimenGrid({
             </div>
             <div className="flex items-center gap-1.5 p-2 rounded bg-surface-container-low border border-[#0f172a]">
               <span className="material-symbols-outlined text-sm text-primary font-bold">fingerprint</span>
-              <span className="text-on-surface font-semibold">SHA-256: 9b2d...1a4</span>
+              <span className="text-on-surface font-semibold">SHA-256: {datasetInfo?.file_hash_short || 'verified'}</span>
             </div>
           </div>
         </div>

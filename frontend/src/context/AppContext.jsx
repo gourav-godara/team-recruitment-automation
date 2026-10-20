@@ -85,6 +85,23 @@ export function AppProvider({ children }) {
     navigate(`${pathname}${queryString ? `?${queryString}` : ''}`);
   };
 
+  const resetDataset = () => {
+    setDatasetId(null);
+    setRunId(null);
+    setUploadedDataset(null);
+    setEvaluationResult(null);
+    sessionStorage.removeItem('app_dataset_id');
+    sessionStorage.removeItem('app_run_id');
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('dataset_id');
+      url.searchParams.delete('run_id');
+      window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
+    } catch {
+      // ignore
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -99,6 +116,7 @@ export function AppProvider({ children }) {
         evaluationResult,
         setEvaluationResult,
         navigateWithState,
+        resetDataset,
       }}
     >
       {children}

@@ -34,14 +34,14 @@ export default function ScoringEnginePage({ onNavigateHome, onProceedToRankedRes
   // Model & weights state
   const [weights, setWeights] = useState({
     w1: 35,
-    w2: 25,
-    w3: 20,
+    w2: 35,
+    w3: 10,
     w4: 20,
   });
   const [activePreset, setActivePreset] = useState('balanced');
   const [curveType, setCurveType] = useState('z_score'); // 'z_score' | 'min_max'
   const [autoBalance, setAutoBalance] = useState(true);
-  const [topQuota, setTopQuota] = useState(40);
+  const [topQuota, setTopQuota] = useState(5);
   const [activeStage, setActiveStage] = useState('scoring-engine');
 
   // Hard Gates & Disqualified list state

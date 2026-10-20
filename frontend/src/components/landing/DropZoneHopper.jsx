@@ -1,5 +1,4 @@
 import { useState, useRef } from 'react';
-import { SAMPLE_HACKATHON_CSV } from '../../data/sampleHackathonCsv';
 import { uploadImport } from '../../api/client';
 import { useApp } from '../../context/AppContext';
 
@@ -37,10 +36,10 @@ export default function DropZoneHopper({ onUploadSuccess, onError, isIngesting }
   };
 
   const processFile = async (file) => {
-    // 1. Extension validation
+    // 1. Extension validation (CSV preferred, JSON also accepted)
     const name = file.name.toLowerCase();
     if (!name.endsWith('.csv') && !name.endsWith('.json')) {
-      const err = 'Unsupported file format. Please upload a .CSV or .JSON candidate registration file.';
+      const err = 'Unsupported file format. Please upload a .CSV candidate registration spreadsheet.';
       setFileFeedback(err);
       if (onError) onError(err);
       return;
@@ -63,7 +62,7 @@ export default function DropZoneHopper({ onUploadSuccess, onError, isIngesting }
       const datasetId = result.dataset_id;
       setDatasetId(datasetId);
       setUploadedDataset(result);
-      setFileFeedback(`✓ Successfully imported ${result.total_teams} teams (${result.total_records || 'all'} members)!`);
+      setFileFeedback(`✓ Successfully imported ${result.total_teams} teams (${result.total_records || 'all'} candidates)!`);
 
       if (onUploadSuccess) {
         onUploadSuccess(result);
@@ -73,34 +72,7 @@ export default function DropZoneHopper({ onUploadSuccess, onError, isIngesting }
         }, 500);
       }
     } catch (err) {
-      const msg = err.message || 'File upload failed. Please verify CSV/JSON formatting.';
-      setFileFeedback(`Error: ${msg}`);
-      if (onError) onError(msg);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleLoadSample = async () => {
-    setUploading(true);
-    setFileFeedback('⚡ Uploading canonical Hackathon sample dataset (8 teams, 25 members)...');
-
-    try {
-      const result = await uploadImport(SAMPLE_HACKATHON_CSV, 'sample_hackathon_registrations.csv', campaignId);
-      const datasetId = result.dataset_id;
-      setDatasetId(datasetId);
-      setUploadedDataset(result);
-      setFileFeedback(`✓ Successfully imported sample dataset (${result.total_teams} teams)!`);
-
-      if (onUploadSuccess) {
-        onUploadSuccess(result);
-      } else {
-        setTimeout(() => {
-          navigateWithState('/schema-mapper', { datasetId });
-        }, 500);
-      }
-    } catch (err) {
-      const msg = err.message || 'Failed to load sample dataset.';
+      const msg = err.message || 'File upload failed. Please verify CSV formatting.';
       setFileFeedback(`Error: ${msg}`);
       if (onError) onError(msg);
     } finally {
@@ -112,18 +84,18 @@ export default function DropZoneHopper({ onUploadSuccess, onError, isIngesting }
 
   return (
     <div className="w-full bg-white retro-border-thick rounded-3xl p-6 md:p-10 shadow-pop-lg relative overflow-hidden">
-      {/* Top playful tabs decoration */}
+      {/* Top clean header */}
       <div className="flex items-center justify-between pb-6 border-b-2 border-slate-200">
         <div className="flex items-center gap-2">
           <span className="w-3.5 h-3.5 rounded-full bg-rose-400 retro-border"></span>
           <span className="w-3.5 h-3.5 rounded-full bg-brand-yellow retro-border"></span>
           <span className="w-3.5 h-3.5 rounded-full bg-brand-green retro-border"></span>
           <span className="ml-2 font-mono text-xs font-bold uppercase tracking-wider text-slate-500">
-            INGESTION_STATION_v2.0.exe
+            CANDIDATE REGISTRATION UPLOAD
           </span>
         </div>
         <span className="px-3 py-0.5 rounded-full bg-brand-purple/10 text-brand-purple font-mono font-bold text-xs retro-border">
-          PUBLIC • NO LOGIN REQUIRED • CSV / JSON
+          PUBLIC • NO LOGIN REQUIRED • CSV SPREADSHEETS
         </span>
       </div>
 
@@ -157,16 +129,16 @@ export default function DropZoneHopper({ onUploadSuccess, onError, isIngesting }
           }`}
         >
           <span className="material-symbols-outlined text-4xl font-bold">
-            {busy ? 'hourglass_top' : 'cloud_upload'}
+            {busy ? 'hourglass_top' : 'upload_file'}
           </span>
         </div>
 
         <div className="flex flex-col gap-1 max-w-lg">
           <h3 className="font-display font-extrabold text-2xl text-brand-dark">
-            {busy ? 'Ingesting Dataset into Backend Engine...' : 'Drop Registration File or Click to Ingest'}
+            {busy ? 'Ingesting Candidate Registrations...' : 'Drop Candidate Registrations CSV or Click to Browse'}
           </h3>
           <p className="font-sans text-sm text-slate-600 font-medium">
-            Upload CSV or JSON candidate submissions. The backend automatically extracts teams, validates roster bounds, and normalizes candidate profiles.
+            Upload your candidate registrations CSV spreadsheet. The system automatically groups team members, checks for missing data, and prepares teams for scoring.
           </p>
           {fileFeedback && (
             <div
@@ -191,29 +163,16 @@ export default function DropZoneHopper({ onUploadSuccess, onError, isIngesting }
               e.stopPropagation();
               fileInputRef.current?.click();
             }}
-            className="px-6 py-3 bg-brand-yellow hover:bg-yellow-300 text-brand-dark font-display font-black text-sm md:text-base rounded-xl retro-border shadow-pop hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-pop-hover active:shadow-none transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+            className="px-8 py-3.5 bg-brand-yellow hover:bg-yellow-300 text-brand-dark font-display font-black text-sm md:text-base rounded-xl retro-border shadow-pop hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-pop-hover active:shadow-none transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
           >
-            <span className="material-symbols-outlined text-lg font-bold">folder_open</span>
-            Select CSV or JSON File
-          </button>
-          <button
-            id="quick-demo-btn"
-            type="button"
-            disabled={busy}
-            onClick={(e) => {
-              e.stopPropagation();
-              handleLoadSample();
-            }}
-            className="px-5 py-3 bg-white hover:bg-slate-50 text-brand-dark font-display font-bold text-sm md:text-base rounded-xl retro-border shadow-pop hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-pop-hover active:shadow-none transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
-          >
-            <span className="material-symbols-outlined text-brand-blue text-lg font-bold">
-              play_circle
-            </span>
-            ⚡ Use Sample Registrations (25 Candidates)
+            <span className="material-symbols-outlined text-xl font-bold">folder_open</span>
+            Select CSV File
           </button>
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-2 pt-2 text-xs font-mono font-bold text-slate-500">
+          <span className="bg-white px-2.5 py-1 rounded retro-border">CSV SPREADSHEETS</span>
+          <span>•</span>
           <span className="bg-white px-2.5 py-1 rounded retro-border">MAX 10 MB</span>
           <span>•</span>
           <span className="bg-white px-2.5 py-1 rounded retro-border">EXPLAINABLE FASTAPI ENGINE</span>

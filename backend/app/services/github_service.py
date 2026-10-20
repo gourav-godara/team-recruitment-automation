@@ -29,9 +29,12 @@ class GitHubProfileData:
     canonical_url: str
     valid: bool
     public_repos: int = 0
+    original_repos_count: int = 0
+    forked_repos_count: int = 0
     followers: int = 0
     total_stars: int = 0
     top_languages: List[str] = field(default_factory=list)
+    recent_repos: List[Dict[str, Any]] = field(default_factory=list)
     account_created_at: Optional[str] = None
     account_age_years: float = 0.0
     composite_score: float = 0.0  # Normalized [0, 100]
@@ -195,8 +198,11 @@ class GitHubService:
                 except Exception:
                     pass
 
-            # Fetch repositories to compute stars and top languages
+            # Fetch repositories to compute stars, top languages, and inspect projects
             total_stars = 0
+            original_repos_count = 0
+            forked_repos_count = 0
+            recent_repos = []
             languages_count: Dict[str, int] = {}
 
             try:
@@ -205,11 +211,25 @@ class GitHubService:
                     repos_data = repos_resp.json()
                     if isinstance(repos_data, list):
                         for r in repos_data:
-                            if not r.get("fork", False):  # Focus on original repos
+                            is_fork = bool(r.get("fork", False))
+                            if is_fork:
+                                forked_repos_count += 1
+                            else:
+                                original_repos_count += 1
                                 total_stars += int(r.get("stargazers_count", 0))
                                 lang = r.get("language")
                                 if lang:
                                     languages_count[lang] = languages_count.get(lang, 0) + 1
+
+                            if len(recent_repos) < 6:
+                                recent_repos.append({
+                                    "name": r.get("name"),
+                                    "html_url": r.get("html_url"),
+                                    "description": r.get("description"),
+                                    "language": r.get("language"),
+                                    "stars": int(r.get("stargazers_count", 0)),
+                                    "is_fork": is_fork,
+                                })
             except Exception as e:
                 logger.debug(f"Could not fetch repos for {username}: {e}")
 
@@ -228,9 +248,12 @@ class GitHubService:
                 canonical_url=canonical_url,
                 valid=True,
                 public_repos=public_repos,
+                original_repos_count=original_repos_count,
+                forked_repos_count=forked_repos_count,
                 followers=followers,
                 total_stars=total_stars,
                 top_languages=sorted_languages,
+                recent_repos=recent_repos,
                 account_created_at=created_at_str,
                 account_age_years=round(account_age_years, 2),
                 composite_score=round(composite_score, 2),

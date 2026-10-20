@@ -15,7 +15,7 @@ from backend.app.services.eligibility_engine import evaluate_eligibility
 from backend.app.services.explanation_engine import generate_team_explanations
 from backend.app.services.ranking_engine import rank_teams
 from backend.app.services.rule_engine import ConfigurableRuleEngine
-from backend.app.services.scoring_engine import calculate_team_score
+from backend.app.services.scoring_engine import calculate_member_score, calculate_team_score
 
 
 def compute_canonical_hash(data: Any) -> str:
@@ -131,6 +131,9 @@ def evaluate_teams_pipeline(
             elif rule_summary.status == RuleOutcome.PASS and rule_summary.summary:
                 reasons.append(f"Rule Compliance: {rule_summary.summary}")
 
+        # Step E: Member-level scoring and evaluation
+        member_scores = [calculate_member_score(m, config) for m in team.members]
+
         team_res = TeamScoreResult(
             team_id=team.team_id,
             name=team.name,
@@ -142,6 +145,7 @@ def evaluate_teams_pipeline(
             score_breakdown=breakdown,
             criterion_states=states,
             detailed_contributions=details,
+            member_scores=member_scores,
             reasons=reasons,
             missing_data=missing_notes,
             flags=flags,

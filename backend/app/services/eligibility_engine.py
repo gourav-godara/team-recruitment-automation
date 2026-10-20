@@ -1,5 +1,6 @@
 from typing import List, Optional
 from backend.app.schemas.scoring import (
+    AffectedMemberDetail,
     AggregationType,
     EligibilityResult,
     MissingDataPolicy,
@@ -26,6 +27,8 @@ def evaluate_single_rule(team: Team, rule: RuleConfig) -> RuleResult:
 
     logic and explicit separation of MISSING vs INVALID vs NOT_APPLICABLE.
     """
+    expected_cond_str = f"{rule.operator.value} {rule.value}" if rule.value is not None else rule.operator.value
+
     # 1. Handle TEAM scope
     if rule.scope == RuleScope.TEAM:
         signal = team.team_signals.get(rule.field)
@@ -37,6 +40,10 @@ def evaluate_single_rule(team: Team, rule: RuleConfig) -> RuleResult:
                     reason=f"Required team field '{rule.field}' is missing",
                     field=rule.field,
                     evaluated_value=None,
+                    expected_condition=expected_cond_str,
+                    operator=rule.operator.value,
+                    threshold=rule.value,
+                    scope="TEAM",
                     missing_count=1,
                     total_count=1,
                 )
@@ -47,6 +54,10 @@ def evaluate_single_rule(team: Team, rule: RuleConfig) -> RuleResult:
                     reason=f"Team field '{rule.field}' is missing (flagged for review)",
                     field=rule.field,
                     evaluated_value=None,
+                    expected_condition=expected_cond_str,
+                    operator=rule.operator.value,
+                    threshold=rule.value,
+                    scope="TEAM",
                     missing_count=1,
                     total_count=1,
                 )
@@ -56,6 +67,10 @@ def evaluate_single_rule(team: Team, rule: RuleConfig) -> RuleResult:
                 reason=f"Team field '{rule.field}' is missing",
                 field=rule.field,
                 evaluated_value=None,
+                expected_condition=expected_cond_str,
+                operator=rule.operator.value,
+                threshold=rule.value,
+                scope="TEAM",
                 missing_count=1,
                 total_count=1,
             )
@@ -67,6 +82,10 @@ def evaluate_single_rule(team: Team, rule: RuleConfig) -> RuleResult:
                 reason=f"Team field '{rule.field}' is invalid: {signal.reason or 'Validation failure'}",
                 field=rule.field,
                 evaluated_value=None,
+                expected_condition=expected_cond_str,
+                operator=rule.operator.value,
+                threshold=rule.value,
+                scope="TEAM",
                 invalid_count=1,
                 total_count=1,
             )
@@ -76,7 +95,7 @@ def evaluate_single_rule(team: Team, rule: RuleConfig) -> RuleResult:
         reason = (
             f"Team field '{rule.field}' satisfies condition ({signal.value} {rule.operator.value} {rule.value})"
             if passed
-            else f"Team field '{rule.field}' does not satisfy condition ({signal.value} {rule.operator.value} {rule.value})"
+            else f"Team field '{rule.field}' ({signal.value}) does not satisfy condition ({rule.operator.value} {rule.value})"
         )
         return RuleResult(
             rule_name=rule.name,
@@ -84,17 +103,54 @@ def evaluate_single_rule(team: Team, rule: RuleConfig) -> RuleResult:
             reason=reason,
             field=rule.field,
             evaluated_value=signal.value,
+            expected_condition=expected_cond_str,
+            operator=rule.operator.value,
+            threshold=rule.value,
+            scope="TEAM",
             available_count=1,
             total_count=1,
         )
 
     # 2. Handle MEMBER scope
     member_signals: List[SignalValue] = []
+    affected_members: List[AffectedMemberDetail] = []
+
     for m in team.members:
         sig = m.signals.get(rule.field)
         if sig is None:
             sig = SignalValue(value=None, status=SignalState.MISSING)
         member_signals.append(sig)
+
+        # Check individual member condition
+        if sig.status == SignalState.MISSING or sig.value is None:
+            affected_members.append(
+                AffectedMemberDetail(
+                    member_id=m.member_id,
+                    member_name=m.name,
+                    observed_value=None,
+                    reason=f"Required field '{rule.field}' is missing for candidate '{m.name}'",
+                )
+            )
+        elif sig.status == SignalState.INVALID:
+            affected_members.append(
+                AffectedMemberDetail(
+                    member_id=m.member_id,
+                    member_name=m.name,
+                    observed_value=sig.value,
+                    reason=f"Candidate '{m.name}' has invalid data for '{rule.field}': {sig.reason or 'Validation failure'}",
+                )
+            )
+        else:
+            m_passed = evaluate_operator(sig.value, rule.operator, rule.value)
+            if not m_passed:
+                affected_members.append(
+                    AffectedMemberDetail(
+                        member_id=m.member_id,
+                        member_name=m.name,
+                        observed_value=sig.value,
+                        reason=f"Candidate '{m.name}' has {rule.field} = {sig.value} (expected {expected_cond_str})",
+                    )
+                )
 
     total_members = len(member_signals)
     agg_method = (rule.aggregation or "ANY").upper()
@@ -108,12 +164,22 @@ def evaluate_single_rule(team: Team, rule: RuleConfig) -> RuleResult:
             elif rule.missing_policy == MissingDataPolicy.FLAG:
                 raw_status = RuleStatus.FLAGGED
                 reason = f"Field '{rule.field}' has incomplete member data and no verified pass"
+
+        if raw_status == RuleStatus.FAIL and affected_members and not ("missing" in reason.lower() or "incomplete" in reason.lower()):
+            fail_names = ", ".join(f"'{am.member_name or am.member_id}'" for am in affected_members)
+            reason = f"No member satisfied {rule.name} (checked {fail_names}; expected {expected_cond_str})"
+
         return RuleResult(
             rule_name=rule.name,
             status=raw_status,
             reason=reason,
             field=rule.field,
             evaluated_value=None,
+            expected_condition=expected_cond_str,
+            operator=rule.operator.value,
+            threshold=rule.value,
+            scope="MEMBER",
+            affected_members=affected_members if raw_status == RuleStatus.FAIL else [],
             available_count=avail,
             missing_count=missing,
             invalid_count=invalid,
@@ -130,12 +196,22 @@ def evaluate_single_rule(team: Team, rule: RuleConfig) -> RuleResult:
             elif rule.missing_policy == MissingDataPolicy.FLAG:
                 raw_status = RuleStatus.FLAGGED
                 reason = f"Field '{rule.field}' has incomplete data preventing complete verification"
+
+        if raw_status == RuleStatus.FAIL and affected_members and not ("missing" in reason.lower() or "incomplete" in reason.lower()):
+            fail_names = ", ".join(f"'{am.member_name or am.member_id}'" for am in affected_members)
+            reason = f"Failed {rule.name}: member(s) {fail_names} did not meet condition ({expected_cond_str})"
+
         return RuleResult(
             rule_name=rule.name,
             status=raw_status,
             reason=reason,
             field=rule.field,
             evaluated_value=None,
+            expected_condition=expected_cond_str,
+            operator=rule.operator.value,
+            threshold=rule.value,
+            scope="MEMBER",
+            affected_members=affected_members if raw_status == RuleStatus.FAIL else [],
             available_count=avail,
             missing_count=missing,
             invalid_count=invalid,
@@ -152,6 +228,10 @@ def evaluate_single_rule(team: Team, rule: RuleConfig) -> RuleResult:
                 reason=f"No valid data to calculate percentage for '{rule.field}'",
                 field=rule.field,
                 evaluated_value=None,
+                expected_condition=expected_cond_str,
+                operator=rule.operator.value,
+                threshold=rule.value,
+                scope="MEMBER",
                 missing_count=agg_sig.missing_count,
                 invalid_count=agg_sig.invalid_count,
                 not_applicable_count=agg_sig.not_applicable_count,
@@ -171,6 +251,11 @@ def evaluate_single_rule(team: Team, rule: RuleConfig) -> RuleResult:
             reason=reason,
             field=rule.field,
             evaluated_value=agg_sig.value,
+            expected_condition=expected_cond_str,
+            operator=rule.operator.value,
+            threshold=rule.value,
+            scope="MEMBER",
+            affected_members=affected_members if status == RuleStatus.FAIL else [],
             available_count=agg_sig.available_count,
             missing_count=agg_sig.missing_count,
             invalid_count=agg_sig.invalid_count,
@@ -193,6 +278,10 @@ def evaluate_single_rule(team: Team, rule: RuleConfig) -> RuleResult:
                 reason=f"Insufficient valid data to evaluate {agg_method} on '{rule.field}'",
                 field=rule.field,
                 evaluated_value=None,
+                expected_condition=expected_cond_str,
+                operator=rule.operator.value,
+                threshold=rule.value,
+                scope="MEMBER",
                 missing_count=agg_sig.missing_count,
                 invalid_count=agg_sig.invalid_count,
                 not_applicable_count=agg_sig.not_applicable_count,
@@ -212,6 +301,11 @@ def evaluate_single_rule(team: Team, rule: RuleConfig) -> RuleResult:
             reason=reason,
             field=rule.field,
             evaluated_value=agg_sig.value,
+            expected_condition=expected_cond_str,
+            operator=rule.operator.value,
+            threshold=rule.value,
+            scope="MEMBER",
+            affected_members=affected_members if status == RuleStatus.FAIL else [],
             available_count=agg_sig.available_count,
             missing_count=agg_sig.missing_count,
             invalid_count=agg_sig.invalid_count,

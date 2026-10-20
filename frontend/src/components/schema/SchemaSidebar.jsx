@@ -1,77 +1,57 @@
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 
 export default function SchemaSidebar({ activeStage, onStageSelect }) {
-  const navigate = useNavigate();
   const location = useLocation();
   const { navigateWithState } = useApp();
 
   const currentStage =
     activeStage ||
-    (location.pathname.startsWith('/export-audit') || location.pathname.startsWith('/audit') || location.pathname.startsWith('/export')
-      ? 'export-audit'
-      : location.pathname.startsWith('/team-compare') || location.pathname.startsWith('/compare')
+    (location.pathname.startsWith('/team-compare') || location.pathname.startsWith('/compare')
       ? 'team-compare'
-      : location.pathname.startsWith('/stability') || location.pathname.startsWith('/stress')
-      ? 'stability-stress'
       : location.pathname.startsWith('/ranked') || location.pathname.startsWith('/results')
       ? 'ranked-results'
       : location.pathname.startsWith('/scoring') || location.pathname.startsWith('/weights')
       ? 'scoring-engine'
       : location.pathname.startsWith('/data-quality') || location.pathname.startsWith('/quality')
       ? 'data-quality'
-      : location.pathname.startsWith('/schema') || location.pathname.startsWith('/import')
-      ? 'import-schema'
       : 'import-schema');
+
   const stages = [
     {
       id: 'import-schema',
       number: '01',
       label: 'Import & Schema',
       icon: 'upload_file',
-      badge: null,
+      path: '/schema-mapper',
     },
     {
       id: 'data-quality',
       number: '02',
-      label: 'Data Quality',
+      label: 'Data Quality Audit',
       icon: 'verified',
-      badge: { text: '18 gap', color: 'bg-[#f97316]' },
+      path: '/data-quality',
     },
     {
       id: 'scoring-engine',
       number: '03',
-      label: 'Scoring Engine',
+      label: 'Scoring & Rules',
       icon: 'tune',
-      badge: null,
+      path: '/scoring-engine',
     },
     {
       id: 'ranked-results',
       number: '04',
-      label: 'Ranked Results',
+      label: 'Shortlist Leaderboard',
       icon: 'leaderboard',
-      badge: { text: 'Top 40', color: 'bg-primary-container text-on-primary-container' },
+      path: '/ranked-results',
     },
     {
       id: 'team-compare',
       number: '05',
       label: 'Team Compare',
       icon: 'compare_arrows',
-      badge: null,
-    },
-    {
-      id: 'stability-stress',
-      number: '06',
-      label: 'Stability Stress',
-      icon: 'speed',
-      badge: { text: '±15%', color: 'bg-[#8b5cf6]' },
-    },
-    {
-      id: 'export-audit',
-      number: '07',
-      label: 'Export & Audit',
-      icon: 'lock',
-      badge: { text: 'SHA-256', color: 'bg-[#10b981]' },
+      path: '/team-compare',
     },
   ];
 
@@ -81,10 +61,10 @@ export default function SchemaSidebar({ activeStage, onStageSelect }) {
       <div className="p-space-md">
         <div className="flex items-center justify-between px-2 mb-space-sm">
           <span className="font-label-sm text-label-sm uppercase tracking-wider text-on-surface-variant font-extrabold">
-            Curation Pipeline
+            Recruitment Stages
           </span>
           <span className="font-label-sm text-label-sm px-1.5 py-0.5 bg-secondary-fixed text-on-secondary-fixed rounded border border-[#0f172a] font-mono font-bold">
-            STAGES 1-7
+            STEP BY STEP
           </span>
         </div>
 
@@ -96,87 +76,46 @@ export default function SchemaSidebar({ activeStage, onStageSelect }) {
                 key={stage.id}
                 type="button"
                 onClick={() => {
-                  if (stage.id === 'import-schema') {
-                    navigateWithState('/schema-mapper');
-                  } else if (stage.id === 'data-quality') {
-                    navigateWithState('/data-quality');
-                  } else if (stage.id === 'scoring-engine') {
-                    navigateWithState('/scoring-engine');
-                  } else if (stage.id === 'ranked-results') {
-                    navigateWithState('/ranked-results');
-                  } else if (stage.id === 'team-compare') {
-                    navigateWithState('/team-compare');
-                  } else if (stage.id === 'stability-stress') {
-                    navigateWithState('/stability-stress');
-                  } else if (stage.id === 'export-audit') {
-                    navigateWithState('/export-audit');
-                  }
+                  navigateWithState(stage.path);
                   if (onStageSelect) {
                     onStageSelect(stage.id);
                   }
                 }}
-                data-path={stage.id}
                 className={`group flex items-center justify-between px-3 py-2.5 rounded-lg border-2 text-left transition-all cursor-pointer ${
                   isActive
-                    ? 'bg-primary-container text-on-primary-container font-bold border-[#0f172a] shadow-[3px_3px_0px_#0f172a] translate-x-1'
-                    : 'border-transparent text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'
+                    ? 'bg-secondary-fixed text-on-secondary-fixed border-[#0f172a] shadow-[2px_2px_0px_#0f172a]'
+                    : 'bg-surface-container-low text-on-surface border-transparent hover:border-[#0f172a] hover:bg-surface-container'
                 }`}
               >
-                <div className="flex items-center gap-space-sm">
+                <div className="flex items-center gap-2.5 min-w-0">
                   <span
-                    className={`font-label-sm text-label-sm font-mono w-5 h-5 flex items-center justify-center rounded border border-[#0f172a] transition-colors ${
+                    className={`font-mono text-xs font-bold px-1.5 py-0.5 rounded border border-[#0f172a] shrink-0 ${
                       isActive
-                        ? 'bg-secondary-fixed text-on-secondary-fixed font-bold'
-                        : 'bg-surface-container-high text-on-surface group-hover:bg-secondary-fixed'
+                        ? 'bg-[#0f172a] text-white'
+                        : 'bg-white text-on-surface'
                     }`}
                   >
                     {stage.number}
                   </span>
-                  <span className="material-symbols-outlined text-lg">{stage.icon}</span>
-                  <span className="font-label-lg text-label-lg">{stage.label}</span>
-                </div>
-
-                {stage.badge && (
-                  <span
-                    className={`font-label-sm text-label-sm px-2 py-0.5 rounded-full border border-[#0f172a] shadow-[1px_1px_0px_#0f172a] text-white font-bold ${stage.badge.color}`}
-                  >
-                    {stage.badge.text}
+                  <span className="font-label-md text-label-md font-bold truncate">
+                    {stage.label}
                   </span>
-                )}
+                </div>
+                <span className="material-symbols-outlined text-sm font-bold shrink-0">
+                  {stage.icon}
+                </span>
               </button>
             );
           })}
         </nav>
       </div>
 
-      {/* Bottom Deterministic Engine Card */}
-      <div className="p-space-md">
-        <div className="bg-surface-container-lowest border-2 border-[#0f172a] rounded-lg shadow-[3px_3px_0px_#0f172a] overflow-hidden">
-          <div className="bg-secondary-fixed px-3 py-1.5 border-b-2 border-[#0f172a] flex items-center justify-between">
-            <span className="font-label-sm text-label-sm uppercase text-on-secondary-fixed font-black tracking-wider">
-              Deterministic Engine
-            </span>
-            <span className="font-label-sm text-label-sm px-1.5 py-0.5 bg-surface-container-lowest text-on-surface rounded border border-[#0f172a] font-bold">
-              v2.4
-            </span>
-          </div>
-          <div className="p-3 bg-surface-container-low">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="material-symbols-outlined text-sm text-[#10b981] font-bold">
-                check_circle
-              </span>
-              <span className="font-label-sm text-label-sm text-on-surface font-bold">
-                State Sealed &amp; Verified
-              </span>
-            </div>
-            <p className="font-body-sm text-body-sm text-on-surface-variant text-xs leading-tight mb-2">
-              Zero algorithmic drift. Deterministic scoring passes consensus checks.
-            </p>
-            <div className="flex items-center justify-between text-xs font-mono text-on-surface-variant pt-2 border-t border-outline-variant">
-              <span>Sync Delay</span>
-              <span className="font-bold text-on-surface">0.00ms</span>
-            </div>
-          </div>
+      {/* Bottom Session Box */}
+      <div className="p-space-md border-t-2 border-[#0f172a] bg-surface-container-low">
+        <div className="flex flex-col gap-1 text-xs font-mono text-slate-600">
+          <span className="font-bold text-slate-800">AUTOMATION PLATFORM</span>
+          <span>Deterministic FastAPI Engine</span>
+          <span>Anonymous Session Active</span>
         </div>
       </div>
     </aside>

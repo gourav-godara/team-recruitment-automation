@@ -1,93 +1,71 @@
 export default function RankedFilterToolbar({
-  activeTrack,
-  onSelectTrack,
-  shortlistedOnly,
-  onToggleShortlistedOnly,
+  activeFilter,
+  onSelectFilter,
   sortBy,
   onSortChange,
   searchQuery,
   onSearchChange,
-  trackCounts = {
-    all: 482,
-    defi: 118,
-    ai: 164,
-    infra: 120,
-    security: 48,
-  },
+  counts = { all: 0, shortlisted: 0, waitlisted: 0, ineligible: 0 },
 }) {
-  const tracks = [
-    { id: 'all', label: `All Tracks (${trackCounts.all})` },
-    { id: 'defi', label: `DeFi (${trackCounts.defi})` },
-    { id: 'ai', label: `AI / Agent (${trackCounts.ai})` },
-    { id: 'infra', label: `Infra (${trackCounts.infra})` },
-    { id: 'security', label: `Security (${trackCounts.security})` },
+  const filterTabs = [
+    { id: 'all', label: `All Teams (${counts.all})` },
+    { id: 'shortlisted', label: `Shortlisted (${counts.shortlisted})`, color: 'bg-emerald-100 text-emerald-800' },
+    { id: 'waitlisted', label: `Waitlisted (${counts.waitlisted})`, color: 'bg-blue-100 text-blue-800' },
+    { id: 'ineligible', label: `Ineligible (${counts.ineligible})`, color: 'bg-rose-100 text-rose-800' },
   ];
 
   return (
     <div className="bg-surface-container-lowest p-3 rounded-xl border-2 border-[#0f172a] shadow-[3px_3px_0px_#0f172a] flex flex-wrap items-center justify-between gap-space-sm">
-      {/* Track Pill Buttons */}
+      {/* Status Filter Tabs */}
       <div className="flex flex-wrap items-center gap-space-xs">
-        {tracks.map((track) => {
-          const isActive = activeTrack === track.id;
+        {filterTabs.map((tab) => {
+          const isActive = (activeFilter || 'all') === tab.id;
           return (
             <button
-              key={track.id}
+              key={tab.id}
               type="button"
-              onClick={() => onSelectTrack(track.id)}
-              className={`px-3 py-1 rounded-full font-label-md text-label-md transition-all cursor-pointer font-bold ${
+              onClick={() => onSelectFilter(tab.id)}
+              className={`px-3.5 py-1.5 rounded-full font-label-md text-label-md transition-all cursor-pointer font-bold ${
                 isActive
-                  ? 'bg-primary-container text-on-primary-container border-2 border-[#0f172a] shadow-[2px_2px_0px_#0f172a]'
-                  : 'bg-surface hover:bg-surface-container text-on-surface border-2 border-[#0f172a] shadow-[1px_1px_0px_#0f172a]'
+                  ? 'bg-[#0f172a] text-white border-2 border-[#0f172a] shadow-[2px_2px_0px_#0f172a]'
+                  : 'bg-white hover:bg-slate-100 text-on-surface border-2 border-[#0f172a] shadow-[1px_1px_0px_#0f172a]'
               }`}
             >
-              {track.label}
+              {tab.label}
             </button>
           );
         })}
       </div>
 
-      {/* Right Controls: Checkbox, Sort & Search */}
+      {/* Right Controls: Sort & Search */}
       <div className="flex flex-wrap items-center gap-space-md">
         {/* Search Input */}
         <div className="relative">
-          <span className="material-symbols-outlined text-xs absolute left-2.5 top-2 text-on-surface-variant">
+          <span className="material-symbols-outlined text-sm absolute left-2.5 top-2 text-on-surface-variant font-bold">
             search
           </span>
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search teams..."
-            className="pl-8 pr-3 py-1 bg-surface-container-low font-label-sm text-label-sm text-on-surface rounded-lg border-2 border-[#0f172a] shadow-[1px_1px_0px_#0f172a] focus:outline-none focus:bg-white w-36 sm:w-44"
+            placeholder="Search team or candidate..."
+            className="pl-8 pr-3 py-1 bg-surface-container rounded-lg border-2 border-[#0f172a] font-body-sm text-body-sm focus:outline-none focus:bg-surface-container-lowest font-medium w-48 sm:w-64"
           />
         </div>
 
-        {/* Shortlist Checkbox */}
-        <label className="flex items-center gap-2 cursor-pointer font-label-md text-label-md text-on-surface select-none font-bold">
-          <input
-            type="checkbox"
-            checked={shortlistedOnly}
-            onChange={(e) => onToggleShortlistedOnly(e.target.checked)}
-            className="w-4 h-4 border-2 border-[#0f172a] rounded accent-primary-container cursor-pointer"
-          />
-          <span>Shortlisted Only (Top 40)</span>
-        </label>
-
-        {/* Sort Select */}
-        <div className="relative">
+        {/* Sort Dropdown */}
+        <div className="flex items-center gap-1 font-mono font-label-sm text-label-sm">
+          <span className="text-on-surface-variant font-bold">Sort:</span>
           <select
             value={sortBy}
             onChange={(e) => onSortChange(e.target.value)}
-            className="appearance-none bg-surface-container-low font-label-sm text-label-sm font-bold text-on-surface py-1.5 pl-3 pr-7 rounded-lg border-2 border-[#0f172a] shadow-[1px_1px_0px_#0f172a] focus:outline-none cursor-pointer"
+            className="bg-surface-container px-2 py-1 rounded border-2 border-[#0f172a] font-bold focus:outline-none cursor-pointer"
           >
-            <option value="score_desc">Total Score DESC</option>
-            <option value="tech_desc">Tech Depth DESC</option>
-            <option value="velocity_desc">GitHub Velocity DESC</option>
-            <option value="risk_asc">Bubble Risk ASC</option>
+            <option value="rank_asc">Rank (1 to Top)</option>
+            <option value="score_desc">Highest Score</option>
+            <option value="score_asc">Lowest Score</option>
+            <option value="name_asc">Team Name (A-Z)</option>
           </select>
-          <span className="material-symbols-outlined text-xs absolute right-2 top-2 pointer-events-none">
-            expand_more
-          </span>
         </div>
       </div>
     </div>

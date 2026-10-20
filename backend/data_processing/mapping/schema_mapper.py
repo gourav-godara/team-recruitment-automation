@@ -23,9 +23,10 @@ class SchemaMapper:
     def _normalize_key(self, key: str) -> str:
         """Normalize key string for robust comparison (lowercase, strip symbols)."""
         k = key.strip().lower()
-        k = re.sub(r"[\s\-\.]+", "_", k)
+        k = re.sub(r"[\s\-\.&/]+", "_", k)
         k = re.sub(r"[^\w]", "", k)
-        return k
+        k = re.sub(r"_+", "_", k)
+        return k.strip("_")
 
     def _build_reverse_lookup(self, aliases_dict: Dict[str, List[str]]) -> Dict[str, str]:
         """Build a normalized lookup table from alias -> canonical field name."""
