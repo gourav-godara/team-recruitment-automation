@@ -578,8 +578,8 @@ export function computeSimulationRankings(teams, weights, curve = 'z_score', act
       displacementType = 'negative';
     }
 
-    let quotaStatus = 'BUBBLE SAFE';
-    let quotaType = 'safe'; // 'locked' | 'safe' | 'wire' | 'drop' | 'eliminated'
+    let quotaStatus;
+    let quotaType; // 'locked' | 'safe' | 'wire' | 'drop' | 'eliminated'
 
     if (simulatedRank <= 38) {
       quotaStatus = 'LOCKED IN';

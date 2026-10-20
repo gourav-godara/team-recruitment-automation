@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SchemaHeader from '../components/schema/SchemaHeader';
 import SchemaSidebar from '../components/schema/SchemaSidebar';
@@ -8,7 +8,7 @@ import SchemaFooterActions from '../components/schema/SchemaFooterActions';
 import QuickPreviewModal from '../components/schema/QuickPreviewModal';
 import ReuploadModal from '../components/schema/ReuploadModal';
 import { mockDatasetInfo, initialSchemaFields } from '../data/mockSchema';
-import { uploadImport } from '../api/client';
+import { uploadImport, getDataset } from '../api/client';
 import { useApp } from '../context/AppContext';
 
 export default function SchemaMapperPage({ onNavigateHome, onProceedToQualityCheck }) {
@@ -30,6 +30,30 @@ export default function SchemaMapperPage({ onNavigateHome, onProceedToQualityChe
       setToast(null);
     }, 3500);
   };
+
+  useEffect(() => {
+    if (!datasetId) return;
+    let isMounted = true;
+    getDataset(datasetId)
+      .then((data) => {
+        if (!isMounted || !data) return;
+        const ds = data.dataset || data;
+        setDatasetInfo((prev) => ({
+          ...prev,
+          id: ds.import_id || ds.id || datasetId,
+          name: ds.name || prev.name,
+          batch_filename: ds.name || prev.batch_filename,
+          total_teams: ds.total_teams !== undefined ? ds.total_teams : prev.total_teams,
+          file_hash_short: ds.file_hash ? ds.file_hash.substring(0, 8) : 'sealed',
+        }));
+      })
+      .catch((err) => {
+        console.warn('Could not fetch dataset details:', err);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [datasetId]);
 
   // Field mapping change handler
   const handleFieldMappingChange = (fieldId, newColumn) => {

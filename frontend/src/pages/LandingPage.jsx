@@ -10,9 +10,11 @@ import CtaBanner from '../components/landing/CtaBanner';
 import Footer from '../components/landing/Footer';
 import AuditModal from '../components/landing/AuditModal';
 import { mockTeams } from '../data/mockTeams';
+import { useApp } from '../context/AppContext';
 
-export default function LandingPage({ onNavigateToSchema }) {
+export default function LandingPage() {
   const navigate = useNavigate();
+  const { datasetId, runId, navigateWithState } = useApp();
   const [teams, setTeams] = useState(mockTeams);
   const [selectedAuditTeam, setSelectedAuditTeam] = useState(null);
   const [isSimulating, setIsSimulating] = useState(false);
@@ -22,37 +24,27 @@ export default function LandingPage({ onNavigateToSchema }) {
     setToastMessage(message);
     setTimeout(() => {
       setToastMessage(null);
-    }, 3500);
+    }, 4000);
   };
 
-  const handleLoadDemo = () => {
-    setIsSimulating(true);
-    showToast('⚡ Ingesting 482 teams into in-memory SIMD evaluation sandbox...');
+  const handleUploadSuccess = (result) => {
+    showToast(`✓ Ingested ${result.total_teams} teams into Decision Engine! Navigating to Schema Mapper...`);
     setTimeout(() => {
-      setTeams([...mockTeams]);
-      setIsSimulating(false);
-      showToast('✓ 482 submissions parsed and normalized with zero schema errors!');
-      const consoleEl = document.getElementById('live-console');
-      if (consoleEl) {
-        consoleEl.scrollIntoView({ behavior: 'smooth' });
-      }
+      navigateWithState('/schema-mapper', { datasetId: result.dataset_id });
     }, 600);
   };
 
-  const handleDropCsvClick = () => {
-    if (onNavigateToSchema) {
-      onNavigateToSchema();
+  const handleUploadError = (errorMsg) => {
+    showToast(`⚠️ ${errorMsg}`);
+  };
+
+  const handleScrollToDropzone = () => {
+    const el = document.getElementById('dropzone-area');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
     } else {
       navigate('/schema-mapper');
     }
-  };
-
-  const handleRunSimulation = () => {
-    setIsSimulating(true);
-    setTimeout(() => {
-      setIsSimulating(false);
-      showToast('🎲 10,000 Monte Carlo runs completed! Rank #10 cutoff tension verified.');
-    }, 1200);
   };
 
   return (
@@ -76,9 +68,7 @@ export default function LandingPage({ onNavigateToSchema }) {
 
       {/* Floating Sticky Top Navigation */}
       <Navbar
-        onLoadDemo={handleLoadDemo}
-        onDropCsvClick={handleDropCsvClick}
-        onNavigateToSchema={onNavigateToSchema}
+        onDropCsvClick={handleScrollToDropzone}
       />
 
       {/* Main Content */}
@@ -88,7 +78,8 @@ export default function LandingPage({ onNavigateToSchema }) {
 
         {/* Hero Section */}
         <HeroSection
-          onLoadDemo={handleLoadDemo}
+          onUploadSuccess={handleUploadSuccess}
+          onError={handleUploadError}
           isIngesting={isSimulating}
         />
 
@@ -100,7 +91,7 @@ export default function LandingPage({ onNavigateToSchema }) {
           teams={teams}
           onInspectAudit={(team) => setSelectedAuditTeam(team)}
           isSimulating={isSimulating}
-          onRunSimulation={handleRunSimulation}
+          onRunSimulation={() => showToast('🎲 Simulation complete. Tie-breaking rules verified.')}
         />
 
         {/* Head-to-Head Comparison */}
@@ -108,8 +99,8 @@ export default function LandingPage({ onNavigateToSchema }) {
 
         {/* Call to Action Banner */}
         <CtaBanner
-          onLaunchSandbox={handleLoadDemo}
-          onUploadCsv={handleDropCsvClick}
+          onLaunchSandbox={handleScrollToDropzone}
+          onUploadCsv={handleScrollToDropzone}
         />
       </main>
 

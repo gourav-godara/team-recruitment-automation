@@ -23,6 +23,9 @@ export function AppProvider({ children }) {
     return params.get('run_id') || sessionStorage.getItem('app_run_id') || null;
   });
 
+  const [uploadedDataset, setUploadedDataset] = useState(null);
+  const [evaluationResult, setEvaluationResult] = useState(null);
+
   // Keep state synchronized with URL search params whenever the route changes
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -91,6 +94,10 @@ export function AppProvider({ children }) {
         setDatasetId,
         runId,
         setRunId,
+        uploadedDataset,
+        setUploadedDataset,
+        evaluationResult,
+        setEvaluationResult,
         navigateWithState,
       }}
     >

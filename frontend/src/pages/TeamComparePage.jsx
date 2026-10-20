@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SchemaHeader from '../components/schema/SchemaHeader';
 import SchemaSidebar from '../components/schema/SchemaSidebar';
@@ -12,6 +12,7 @@ import ExportDossierModal from '../components/compare/ExportDossierModal';
 import { mockDatasetInfo } from '../data/mockSchema';
 import { mockDefaultPair, mockEvaluatorsList } from '../data/mockCompare';
 import { useApp } from '../context/AppContext';
+import { getRun, compareTeams } from '../api/client';
 
 export default function TeamComparePage({ onNavigateHome, onProceedToStage06 }) {
   const navigate = useNavigate();
@@ -19,6 +20,8 @@ export default function TeamComparePage({ onNavigateHome, onProceedToStage06 }) 
 
   const [teamA, setTeamA] = useState(mockDefaultPair.teamA);
   const [teamB, setTeamB] = useState(mockDefaultPair.teamB);
+  const [availableTeams, setAvailableTeams] = useState([]);
+  const [pairwiseDiff, setPairwiseDiff] = useState(null);
   const [evaluators] = useState(mockEvaluatorsList);
   const [chosenCandidate, setChosenCandidate] = useState('nova'); // 'nova' | 'synapse' | 'both'
   const [activeStage, setActiveStage] = useState('team-compare');
@@ -33,6 +36,52 @@ export default function TeamComparePage({ onNavigateHome, onProceedToStage06 }) 
     setToast(msg);
     setTimeout(() => setToast(null), 3500);
   };
+
+  // Fetch real teams from current run
+  useEffect(() => {
+    if (!runId) return;
+    let isMounted = true;
+    getRun(runId)
+      .then((data) => {
+        if (!isMounted || !Array.isArray(data?.results) || data.results.length < 2) return;
+        const res = data.results;
+        setAvailableTeams(res);
+        const first = res[0];
+        const second = res[1];
+
+        setTeamA((prev) => ({
+          ...prev,
+          id: first.team_id,
+          name: first.name || `Team ${first.team_id}`,
+          rank: first.rank ?? 1,
+          final_score: Number((first.score || 0).toFixed(2)),
+          status_label: first.status === 'SHORTLISTED' ? 'FINALIST LOCKED' : 'ELIGIBLE',
+        }));
+
+        setTeamB((prev) => ({
+          ...prev,
+          id: second.team_id,
+          name: second.name || `Team ${second.team_id}`,
+          rank: second.rank ?? 2,
+          final_score: Number((second.score || 0).toFixed(2)),
+          status_label: second.status === 'SHORTLISTED' ? 'FINALIST LOCKED' : 'ELIGIBLE',
+        }));
+
+        // Execute pairwise comparison against backend
+        compareTeams(runId, first.team_id, second.team_id)
+          .then((cmp) => {
+            if (isMounted && cmp) setPairwiseDiff(cmp);
+          })
+          .catch(() => {});
+      })
+      .catch((err) => {
+        console.warn('Failed to load comparison teams:', err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [runId]);
 
   // Selection toggle handler
   const toggleCandidateSelection = (chosen) => {

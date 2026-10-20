@@ -259,14 +259,27 @@ export default function TeamInspectionDrawer({
                     </div>
                   </div>
                 </div>
-                <span
-                  className={`material-symbols-outlined text-base ${
-                    member.verified ? 'text-[#10b981]' : 'text-on-surface-variant'
-                  }`}
-                  title={member.verified ? 'Verified Hackathon Registrant' : 'Unverified profile'}
-                >
-                  {member.verified ? 'verified_user' : 'help_outline'}
-                </span>
+                <div className="flex items-center gap-2">
+                  {(member.github_url || member.github_username) && (
+                    <a
+                      href={member.github_url || `https://github.com/${member.github_username}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2 py-0.5 rounded bg-[#0f172a] text-white font-mono text-[10px] flex items-center gap-1 hover:bg-slate-700 font-bold border border-[#0f172a]"
+                    >
+                      <span>GH</span>
+                      <span className="material-symbols-outlined text-[10px]">open_in_new</span>
+                    </a>
+                  )}
+                  <span
+                    className={`material-symbols-outlined text-base ${
+                      member.verified ? 'text-[#10b981]' : 'text-on-surface-variant'
+                    }`}
+                    title={member.verified ? 'Verified Registrant' : 'Unverified profile'}
+                  >
+                    {member.verified ? 'verified_user' : 'help_outline'}
+                  </span>
+                </div>
               </div>
             ))}
           </div>

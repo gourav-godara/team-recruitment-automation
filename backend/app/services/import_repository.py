@@ -116,6 +116,7 @@ class ImportRepository:
         filename: Optional[str] = None,
         file_format: str = "csv",
         campaign_id: Optional[int] = None,
+        session_id: Optional[str] = None,
     ) -> Dataset:
         """Persists an ImportResult and all its teams, members, and signals inside a database transaction."""
         cls.ensure_criteria_exist(db)
@@ -125,6 +126,7 @@ class ImportRepository:
         dataset_name = filename or f"Import_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
         dataset = Dataset(
             campaign_id=int(campaign_id) if campaign_id is not None else None,
+            session_id=session_id,
             name=dataset_name,
             source_format=file_format.lower() if file_format.lower() in ("csv", "json") else "csv",
             file_hash=file_hash,
@@ -251,16 +253,26 @@ class ImportRepository:
             table_name="datasets",
             record_id=dataset.id,
             action="insert",
+            session_id=session_id,
+            actor_type="anonymous" if not getattr(dataset, "campaign_id", None) else "organizer",
             new_values={
                 "dataset_id": dataset.id,
                 "name": dataset.name,
                 "total_teams": dataset.total_teams,
                 "file_hash": dataset.file_hash,
+                "session_id": session_id,
             },
         )
         db.add(audit)
 
         return dataset
+
+    @classmethod
+    def list_session_datasets(cls, db: Any, session_id: str) -> List[Dataset]:
+        """Lists all datasets belonging to an anonymous session."""
+        if not session_id or not hasattr(db, "query"):
+            return []
+        return db.query(Dataset).filter_by(session_id=session_id).order_by(Dataset.uploaded_at.desc()).all()
 
     @classmethod
     def get_dataset_by_id(cls, db: Any, dataset_id: Union[int, str]) -> Optional[Dataset]:
