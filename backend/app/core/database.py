@@ -4,10 +4,16 @@ Provides session lifecycle management, transaction rollback on failure, connecti
 """
 
 from contextlib import contextmanager
+import json
 import logging
 import os
 from pathlib import Path
+import sqlite3
 from typing import Generator
+
+# Universal SQLite adapter registration to prevent (sqlite3.ProgrammingError) Error binding parameter: type 'dict' is not supported
+sqlite3.register_adapter(dict, json.dumps)
+sqlite3.register_adapter(list, json.dumps)
 
 from backend.app.core.config import settings
 
@@ -94,6 +100,19 @@ if HAS_SQLALCHEMY:
             echo=settings.DEBUG,
         )
         SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    # Performance optimization: enable WAL mode and NORMAL synchronous for SQLite
+    if engine is not None and "sqlite" in str(engine.url):
+        from sqlalchemy import event
+        @event.listens_for(engine, "connect")
+        def _set_sqlite_pragmas(dbapi_conn, conn_record):
+            try:
+                cursor = dbapi_conn.cursor()
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA synchronous=NORMAL")
+                cursor.close()
+            except Exception:
+                pass
 
 
 def init_db():

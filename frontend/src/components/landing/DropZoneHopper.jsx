@@ -116,30 +116,55 @@ export default function DropZoneHopper({ onUploadSuccess, onError, isIngesting }
         onDrop={handleDrop}
         onClick={() => !busy && fileInputRef.current?.click()}
         className={`mt-6 border-4 border-dashed border-brand-dark rounded-2xl p-8 md:p-12 text-center flex flex-col items-center justify-center gap-5 transition-all group ${
-          busy ? 'opacity-80 cursor-wait' : 'cursor-pointer'
+          busy ? 'opacity-90 cursor-wait bg-amber-50/60' : 'cursor-pointer'
         } ${
           isDragOver
             ? 'bg-yellow-100 border-brand-blue scale-[1.01]'
             : 'bg-brand-cream/80 hover:bg-yellow-50/50'
         }`}
       >
+        {/* Themed Reticle Animation Box matching Website Theme */}
         <div
-          className={`w-20 h-20 rounded-2xl bg-brand-yellow retro-border shadow-pop flex items-center justify-center text-brand-dark transition-transform ${
-            busy ? 'animate-bounce' : 'group-hover:scale-110 group-hover:-rotate-3'
+          className={`w-20 h-20 rounded-2xl bg-brand-yellow retro-border shadow-pop flex items-center justify-center text-brand-dark transition-all relative overflow-hidden ${
+            busy ? 'scale-105 shadow-[2px_2px_0px_#0F172A]' : 'group-hover:scale-110 group-hover:-rotate-3'
           }`}
         >
-          <span className="material-symbols-outlined text-4xl font-bold">
-            {busy ? 'hourglass_top' : 'upload_file'}
-          </span>
+          {busy ? (
+            <div className="relative w-full h-full flex items-center justify-center p-1">
+              <div className="absolute inset-1 rounded-xl border-2 border-dashed border-[#0F172A] animate-reticle-spin"></div>
+              <img
+                src="/logo.png"
+                alt="Ingesting Target Reticle"
+                className="w-14 h-14 object-contain animate-pulse relative z-10"
+              />
+            </div>
+          ) : (
+            <span className="material-symbols-outlined text-4xl font-bold">
+              upload_file
+            </span>
+          )}
         </div>
 
-        <div className="flex flex-col gap-1 max-w-lg">
+        <div className="flex flex-col gap-1 max-w-lg items-center">
           <h3 className="font-display font-extrabold text-2xl text-brand-dark">
             {busy ? 'Ingesting Candidate Registrations...' : 'Drop Candidate Registrations CSV or Click to Browse'}
           </h3>
           <p className="font-sans text-sm text-slate-600 font-medium">
             Upload your candidate registrations CSV spreadsheet. The system automatically groups team members, checks for missing data, and prepares teams for scoring.
           </p>
+
+          {/* Animated Hazard Striped Loading Progress Bar */}
+          {busy && (
+            <div className="w-full max-w-xs mt-3 flex flex-col gap-1 items-center">
+              <div className="w-full bg-slate-200 rounded-lg h-3 overflow-hidden border-2 border-[#0F172A]">
+                <div className="h-full w-full animate-hazard-stripes"></div>
+              </div>
+              <span className="text-[10px] font-mono font-bold text-brand-blue animate-pulse uppercase tracking-wider">
+                Auditing Roster Schema & Parsing Attributes...
+              </span>
+            </div>
+          )}
+
           {fileFeedback && (
             <div
               className={`mt-2 text-xs font-mono font-bold px-3 py-1.5 rounded-lg retro-border inline-block self-center shadow-pop-sm ${
