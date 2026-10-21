@@ -28,7 +28,7 @@ class ImportService:
     """End-to-end import processor for registration files."""
 
     def __init__(self, config: Optional[ImportConfig] = None):
-        self.config = config or ImportConfig()
+        self.config = config or ImportConfig(max_team_size=10)
         self.csv_parser = CSVParser()
         self.json_parser = JSONParser()
         self.schema_mapper = SchemaMapper(config=self.config)

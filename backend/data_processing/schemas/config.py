@@ -18,7 +18,7 @@ class ImportConfig(BaseModel):
     """Configuration passed by organizers for parsing, mapping, and validation."""
 
     min_team_size: int = Field(default=1, description="Minimum allowed team size")
-    max_team_size: int = Field(default=10, description="Maximum allowed team size")
+    max_team_size: int = Field(default=4, description="Maximum allowed team size")
     required_member_fields: List[str] = Field(
         default_factory=lambda: ["name"],
         description="Fields strictly required for a member record",

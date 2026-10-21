@@ -31,6 +31,15 @@ ENV/
 .coverage
 htmlcov/
 
+# Databases
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+backend/recruitment.db
+
 # Environment Variables
 .env
 .env.local

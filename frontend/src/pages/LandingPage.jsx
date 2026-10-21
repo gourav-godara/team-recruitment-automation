@@ -160,6 +160,10 @@ export default function LandingPage() {
       })
       .catch((err) => {
         console.warn('Dataset rehydrate error:', err);
+        if (err?.message && err.message.includes('404')) {
+          setDatasetId(null);
+          setDataset(null);
+        }
       });
 
     // Fetch quality report
@@ -170,6 +174,9 @@ export default function LandingPage() {
       })
       .catch((err) => {
         console.warn('Quality report rehydrate error:', err);
+        if (err?.message && err.message.includes('404')) {
+          setQualityReport(null);
+        }
       });
 
     return () => {
@@ -463,6 +470,7 @@ export default function LandingPage() {
       .then(([runRes, lbRes]) => {
         if (runRes.status === 'rejected') {
           console.warn('Run fetch error:', runRes.reason);
+          setRunId(null);
           return;
         }
 

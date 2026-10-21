@@ -47,6 +47,63 @@ is_postgres_active = False
 sqlite_path = Path(__file__).resolve().parent.parent.parent / "recruitment.db"
 sqlite_url = f"sqlite:///{sqlite_path}"
 
+
+def _heal_sqlite_database_if_corrupted(db_path: Path) -> None:
+    """Verifies that an existing SQLite file is intact and not malformed.
+
+    If corruption is detected (e.g. from an incomplete transaction, container crash,
+    or git-corrupted binary checkout), backs up the corrupted file and initializes a clean DB.
+    """
+    if not db_path.exists():
+        return
+
+    is_corrupt = False
+    try:
+        if db_path.stat().st_size == 0:
+            return
+
+        test_conn = sqlite3.connect(str(db_path), timeout=3)
+        cursor = test_conn.cursor()
+        cursor.execute("PRAGMA quick_check;")
+        row = cursor.fetchone()
+        cursor.close()
+        test_conn.close()
+
+        if not row or row[0].lower() != "ok":
+            is_corrupt = True
+    except Exception as e:
+        logger.error(f"Integrity check failed for SQLite database at {db_path}: {e}")
+        is_corrupt = True
+
+    if is_corrupt:
+        from datetime import datetime, timezone
+        backup_name = f"{db_path.name}.corrupted.{int(datetime.now(timezone.utc).timestamp())}"
+        backup_path = db_path.parent / backup_name
+        logger.warning(
+            f"⚠️ SQLite database file at '{db_path}' is malformed or corrupted. "
+            f"Automatically moving corrupted file to '{backup_path}' and creating a fresh database."
+        )
+        try:
+            import shutil
+            shutil.move(str(db_path), str(backup_path))
+            for ext in ("-wal", "-shm", "-journal"):
+                sidecar = Path(str(db_path) + ext)
+                if sidecar.exists():
+                    try:
+                        sidecar.unlink()
+                    except Exception:
+                        pass
+        except Exception as move_err:
+            logger.error(f"Could not move malformed SQLite database ({move_err}). Attempting to unlink.")
+            try:
+                db_path.unlink()
+            except Exception:
+                pass
+
+
+# Pre-flight check on SQLite health before engine initialization
+_heal_sqlite_database_if_corrupted(sqlite_path)
+
 if HAS_SQLALCHEMY:
     Base = declarative_base()
 
@@ -118,6 +175,7 @@ if HAS_SQLALCHEMY:
 def init_db():
     """Initializes schema tables if not already present."""
     global engine, SessionLocal, is_postgres_active
+    _heal_sqlite_database_if_corrupted(sqlite_path)
     if HAS_SQLALCHEMY and engine is not None:
         try:
             from backend.app.models.entities import Base as EntityBase
@@ -126,6 +184,7 @@ def init_db():
             logger.warning(f"Could not auto-create tables on primary engine: {e}")
             if is_postgres_active:
                 logger.warning(f"Falling back to local SQLite database: {sqlite_url}")
+                _heal_sqlite_database_if_corrupted(sqlite_path)
                 engine = create_engine(
                     sqlite_url,
                     connect_args={"check_same_thread": False},
