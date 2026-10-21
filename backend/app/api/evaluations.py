@@ -412,7 +412,7 @@ def get_leaderboard(
                 rank=r.rank,
                 team_code=r.team_id,
                 team_name=r.name,
-                team_size=len(r.score_breakdown or {}),
+                team_size=len(r.member_scores) if r.member_scores else 1,
                 total_score=r.score,
                 outcome=r.status.value.lower() if hasattr(r.status, "value") else str(r.status).lower(),
                 has_missing_data=any(s == SignalState.MISSING for s in r.criterion_states.values()) if r.criterion_states else False,

@@ -19,7 +19,7 @@ NEGATIVE_PLACEHOLDERS = {
     "", "none", "n/a", "na", "null", "-", "--", "nil", "no", "false", "undefined", "not available"
 }
 
-GITHUB_USERNAME_REGEX = re.compile(r"^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}$")
+GITHUB_USERNAME_REGEX = re.compile(r"^[a-zA-Z0-9](?:[a-zA-Z0-9_\-]){0,38}$")
 
 
 @dataclass

@@ -15,6 +15,32 @@ from backend.app.schemas.scoring import (
 from backend.app.services.team_aggregation import aggregate_team_signal, evaluate_operator
 
 
+def resolve_criterion_signal(signals: Dict[str, SignalValue], criterion: str) -> Optional[SignalValue]:
+    """Resolves a signal from a signal dictionary using direct key lookup or canonical criterion aliases."""
+    if criterion in signals and signals[criterion] is not None:
+        return signals[criterion]
+
+    c_norm = criterion.lower().strip()
+    if c_norm in ("github", "github_composite_score", "github_score", "code_quality", "repo", "repo_score"):
+        for alt in ("github_composite_score", "github_score", "code_quality", "github", "repo_score", "repo"):
+            if alt in signals and signals[alt] is not None:
+                return signals[alt]
+    elif c_norm in ("experience_years", "experience", "exp", "years_of_experience", "work_experience", "tech"):
+        for alt in ("experience_years", "experience", "exp", "work_experience", "years_of_experience", "tech"):
+            if alt in signals and signals[alt] is not None:
+                return signals[alt]
+    elif c_norm in ("skills", "tech_skills", "technical_skills", "skills_match", "skills_count", "track"):
+        for alt in ("skills", "tech_skills", "technical_skills", "skills_match", "track"):
+            if alt in signals and signals[alt] is not None:
+                return signals[alt]
+    elif c_norm in ("presentation", "pitch", "demo", "presentation_and_pitch", "velocity", "pitch_score", "demo_score"):
+        for alt in ("presentation", "pitch", "demo", "presentation_and_pitch", "velocity", "pitch_score", "demo_score"):
+            if alt in signals and signals[alt] is not None:
+                return signals[alt]
+
+    return None
+
+
 def calculate_team_score(
     team: Team,
     config: ScoringConfig,
@@ -58,18 +84,19 @@ def calculate_team_score(
         agg_type = config.criteria_aggregation.get(criterion, AggregationType.AVERAGE)
         missing_policy = config.criteria_missing_policies.get(criterion, config.missing_policy)
 
-        # Collect member signals
+        # Collect member signals with alias resolution
         member_signals: List[SignalValue] = []
         for m in team.members:
-            sig = m.signals.get(criterion)
+            sig = resolve_criterion_signal(m.signals, criterion)
             if sig is None:
                 sig = SignalValue(value=None, status=SignalState.MISSING)
             member_signals.append(sig)
 
-        # Fallback to team level signal if team has no members
-        if not member_signals and criterion in team.team_signals:
-            sig = team.team_signals[criterion]
-            member_signals = [sig]
+        # Fallback to team level signal if team has no members or all members lack signal
+        if not member_signals or all(s.status == SignalState.MISSING for s in member_signals):
+            team_sig = resolve_criterion_signal(team.team_signals, criterion)
+            if team_sig is not None and team_sig.status != SignalState.MISSING:
+                member_signals = [team_sig]
 
         # Scoring boundary validation: check member/team signals entering scoring for this criterion
         scoring_member_signals = []
@@ -256,30 +283,7 @@ def calculate_member_score(
     weighted_points = 0.0
 
     for criterion, weight in weights.items():
-        sig = member.signals.get(criterion)
-        if sig is None:
-            # Check common criteria aliases
-            if criterion in ("github", "github_composite_score", "github_score", "code_quality"):
-                for alt in ("github_composite_score", "github", "github_score", "code_quality"):
-                    if alt in member.signals:
-                        sig = member.signals[alt]
-                        break
-            elif criterion in ("experience_years", "experience", "exp"):
-                for alt in ("experience_years", "experience", "exp"):
-                    if alt in member.signals:
-                        sig = member.signals[alt]
-                        break
-            elif criterion in ("skills", "tech_skills", "technical_skills", "skills_match"):
-                for alt in ("skills", "tech_skills", "technical_skills", "skills_match"):
-                    if alt in member.signals:
-                        sig = member.signals[alt]
-                        break
-            elif criterion in ("presentation", "pitch", "demo", "presentation_and_pitch"):
-                for alt in ("presentation", "pitch", "demo", "presentation_and_pitch"):
-                    if alt in member.signals:
-                        sig = member.signals[alt]
-                        break
-
+        sig = resolve_criterion_signal(member.signals, criterion)
         if sig is None:
             sig = SignalValue(value=None, status=SignalState.MISSING)
 

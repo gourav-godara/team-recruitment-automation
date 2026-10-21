@@ -196,9 +196,10 @@ export default function LandingPage() {
         r.status === 'SHORTLISTED' ||
         (r.eligibility && r.eligibility.status === 'PASS');
 
-      const rankNum = r.rank ?? idx + 1;
+      // Rank is ONLY valid for eligible teams. Ineligible/disqualified teams must NEVER have a numerical rank.
+      const rankNum = isEligible ? (r.rank ?? idx + 1) : null;
       const isShortlisted =
-        r.status === 'SHORTLISTED' || (isEligible && rankNum <= quota);
+        r.status === 'SHORTLISTED' || (isEligible && rankNum !== null && rankNum <= quota);
 
       const bd = r.score_breakdown || {};
       const expVal = bd.experience_years ?? 3.0;
@@ -443,8 +444,15 @@ export default function LandingPage() {
       };
     });
 
-    mappedTeams.sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999));
-    return mappedTeams;
+    const eligibleTeams = mappedTeams.filter((t) => t.eligibility_status === 'ELIGIBLE');
+    const ineligibleTeams = mappedTeams.filter((t) => t.eligibility_status !== 'ELIGIBLE');
+
+    eligibleTeams.sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999));
+    ineligibleTeams.forEach((t) => {
+      t.rank = null;
+    });
+
+    return [...eligibleTeams, ...ineligibleTeams];
   }, []);
 
   // Re-hydrate Run & Leaderboard on page refresh or runId change
