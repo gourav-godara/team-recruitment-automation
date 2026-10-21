@@ -51,7 +51,13 @@ def _check_run_session_access(db: Any, run_id: Union[int, str], session_id: str)
         int_id = int(run_id)
         run_record = db.query(Run).filter_by(id=int_id).first()
     except (ValueError, TypeError):
-        run_record = db.query(Run).filter_by(id=run_id).first()
+        try:
+            run_record = db.query(Run).filter_by(id=run_id).first()
+        except Exception:
+            run_record = None
+    except Exception as e:
+        logger.warning(f"Database query error in _check_run_session_access for run {run_id}: {e}")
+        run_record = None
 
     if run_record and getattr(run_record, "session_id", None) and session_id:
         if run_record.session_id != session_id:
@@ -398,9 +404,19 @@ def get_leaderboard(
     attach_session_cookie(response, session_id, request)
     _check_run_session_access(db, run_id, session_id)
 
-    leaderboard = EvaluationService.get_leaderboard(db, run_id)
+    try:
+        leaderboard = EvaluationService.get_leaderboard(db, run_id)
+    except Exception as e:
+        logger.warning(f"Error retrieving leaderboard for run '{run_id}': {e}")
+        leaderboard = None
+
     if not leaderboard:
-        saved_eval = EvaluationService.get_saved_evaluation(db, run_id)
+        try:
+            saved_eval = EvaluationService.get_saved_evaluation(db, run_id)
+        except Exception as e:
+            logger.warning(f"Error retrieving saved evaluation for run '{run_id}': {e}")
+            saved_eval = None
+
         if not saved_eval:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
