@@ -308,6 +308,14 @@ class EvaluationService:
         def rank_key(rr):
             return (0 if rr.rank is not None else 1, rr.rank if rr.rank is not None else 0, rr.team_id)
 
+        # Retrieve snapshot metadata & config first
+        snapshot = run.config_snapshot or {}
+        config_data = snapshot.get("config", {})
+        if config_data:
+            config = ScoringConfig(**config_data)
+        else:
+            config = ConfigService.get_config_by_id(db, run.config_id) or ScoringConfig(weights={"fallback": 1.0})
+
         sorted_rows = sorted(result_rows, key=rank_key)
 
         reconstructed_results: List[TeamScoreResult] = []
@@ -316,6 +324,49 @@ class EvaluationService:
             team_row = db.query(Team).filter_by(id=rr.team_id).first()
             team_external_id = team_row.external_id if team_row else str(rr.team_id)
             team_name = team_row.team_name if team_row else f"Team {team_external_id}"
+
+            # Query candidate members for this team to populate authentic member_scores
+            member_score_results = []
+            if team_row:
+                try:
+                    from backend.app.services.import_adapter import adapt_member_data_to_engine_member
+                    from backend.app.services.scoring_engine import calculate_member_score
+                    from schemas.member import MemberData
+
+                    member_rows = db.query(Member).filter_by(team_id=team_row.id).all()
+                    for mr in member_rows:
+                        # Extract signals
+                        sigs = db.query(MemberSignal).filter_by(member_id=mr.id).all()
+                        skills_list = []
+                        exp_years = None
+                        missing_fields = []
+                        for sig in sigs:
+                            if sig.criterion_key == "experience_years" and sig.status == "ok" and sig.value_num is not None:
+                                exp_years = float(sig.value_num)
+                            elif sig.criterion_key == "skills" and sig.status == "ok" and sig.value_text:
+                                skills_list = [s.strip() for s in sig.value_text.split(",") if s.strip()]
+                            elif sig.status in ("missing", "fetch_failed"):
+                                missing_fields.append(sig.criterion_key)
+
+                        m_data = MemberData(
+                            id=str(mr.id),
+                            name=mr.full_name,
+                            email=mr.email,
+                            is_lead=False,
+                            github_url=mr.github_url,
+                            linkedin_url=mr.linkedin_url,
+                            portfolio_url=mr.portfolio_url,
+                            skills=skills_list,
+                            experience_years=exp_years,
+                            missing_fields=list(set(missing_fields)),
+                            extra_data={"declared_gender": mr.gender, "resume_url": mr.resume_url},
+                            is_valid=True,
+                        )
+                        engine_m = adapt_member_data_to_engine_member(m_data)
+                        ms_res = calculate_member_score(engine_m, config)
+                        member_score_results.append(ms_res)
+                except Exception:
+                    pass
 
             # Query criteria score details for this team
             score_details = (
@@ -379,18 +430,11 @@ class EvaluationService:
                     score_breakdown=score_breakdown,
                     criterion_states=criterion_states,
                     detailed_contributions=detailed_contributions,
+                    member_scores=member_score_results,
                     reasons=[rr.reason] if rr.reason else [],
                     missing_data=[],
                 )
             )
-
-        # Retrieve snapshot metadata
-        snapshot = run.config_snapshot or {}
-        config_data = snapshot.get("config", {})
-        if config_data:
-            config = ScoringConfig(**config_data)
-        else:
-            config = ConfigService.get_config_by_id(db, run.config_id) or ScoringConfig(weights={"fallback": 1.0})
 
         eligible_count = sum(1 for r in reconstructed_results if r.eligibility.status == RuleStatus.PASS)
         rejected_count = run.teams_total - eligible_count

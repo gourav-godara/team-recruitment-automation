@@ -170,7 +170,8 @@ export default function SinglePageLeaderboard({
 
     // Calculate simulated score for each team
     const withScores = teams.map((team, idx) => {
-      const origRank = team.rank ?? idx + 1;
+      const isIneligible = team.status === 'INELIGIBLE' || team.eligibility_status === 'DISQUALIFIED';
+      const origRank = isIneligible ? null : (team.rank ?? idx + 1);
 
       if (!isSimulationActive) {
         return {
@@ -186,15 +187,36 @@ export default function SinglePageLeaderboard({
       let skillsPct = 50;
       let pitchPct = 50;
 
-      if (team.score_details && Array.isArray(team.score_details)) {
+      if (team.score_details && Array.isArray(team.score_details) && team.score_details.length > 0) {
         team.score_details.forEach((item) => {
-          const c = (item.criterion || item.label || '').toLowerCase();
-          const val = item.percentage != null ? item.percentage : (Number(item.weighted_score) || 5) * 10;
+          const c = (item.criterion || item.key || item.label || '').toLowerCase();
+          const val = item.percentage != null
+            ? Number(item.percentage)
+            : item.numeric_value != null
+            ? (c.includes('exp') ? Math.min(100, Math.max(25, (Number(item.numeric_value) / 5.0) * 100)) : Number(item.numeric_value))
+            : (Number(item.weighted_score) || 5) * 10;
           if (c.includes('exp')) expPct = val;
           else if (c.includes('git')) ghPct = val;
           else if (c.includes('skill')) skillsPct = val;
           else if (c.includes('pitch') || c.includes('present')) pitchPct = val;
         });
+      } else if (team.members && Array.isArray(team.members) && team.members.length > 0) {
+        // Fallback: derive directly from candidate team members
+        const exps = team.members.map((m) => Number(m.experience_years)).filter((v) => !isNaN(v) && v > 0);
+        if (exps.length > 0) {
+          const avgExp = exps.reduce((a, b) => a + b, 0) / exps.length;
+          expPct = Math.min(100, Math.max(25, (avgExp / 5.0) * 100));
+        }
+        const ghs = team.members.map((m) => Number(m.score ?? 70)).filter((v) => !isNaN(v));
+        if (ghs.length > 0) {
+          ghPct = ghs.reduce((a, b) => a + b, 0) / ghs.length;
+        }
+        const skCount = team.members.map((m) => (Array.isArray(m.skills) ? m.skills.length : 0));
+        if (skCount.length > 0) {
+          const avgSk = skCount.reduce((a, b) => a + b, 0) / skCount.length;
+          skillsPct = Math.min(98, 50 + avgSk * 10);
+        }
+        pitchPct = 75;
       }
 
       const simScore = Math.round(
@@ -215,19 +237,23 @@ export default function SinglePageLeaderboard({
       return withScores;
     }
 
-    // Sort eligible teams by simulated_score descending
+    // Sort eligible teams by simulated_score descending; tie-break by team_id
     const eligible = withScores.filter((t) => t.status !== 'INELIGIBLE' && t.eligibility_status !== 'DISQUALIFIED');
     const ineligible = withScores.filter((t) => t.status === 'INELIGIBLE' || t.eligibility_status === 'DISQUALIFIED');
 
-    eligible.sort((a, b) => (b.simulated_score || 0) - (a.simulated_score || 0));
+    eligible.sort((a, b) => {
+      const diff = (b.simulated_score || 0) - (a.simulated_score || 0);
+      if (Math.abs(diff) > 0.001) return diff;
+      return String(a.team_id).localeCompare(String(b.team_id));
+    });
 
     eligible.forEach((t, i) => {
       t.simulated_rank = i + 1;
       t.rank_delta = (t.origRank ?? (i + 1)) - (i + 1);
     });
 
-    ineligible.forEach((t, i) => {
-      t.simulated_rank = eligible.length + i + 1;
+    ineligible.forEach((t) => {
+      t.simulated_rank = null;
       t.rank_delta = 0;
     });
 
@@ -291,6 +317,13 @@ export default function SinglePageLeaderboard({
     }
 
     list.sort((a, b) => {
+      const aInelig = a.status === 'INELIGIBLE' || a.eligibility_status === 'DISQUALIFIED';
+      const bInelig = b.status === 'INELIGIBLE' || b.eligibility_status === 'DISQUALIFIED';
+
+      // Disqualified / Ineligible teams are ALWAYS placed at the bottom
+      if (aInelig && !bInelig) return 1;
+      if (!aInelig && bInelig) return -1;
+
       const scoreA = isSimulationActive ? (a.simulated_score || 0) : (a.total_score || 0);
       const scoreB = isSimulationActive ? (b.simulated_score || 0) : (b.total_score || 0);
       const rankA = isSimulationActive ? (a.simulated_rank ?? 999) : (a.rank ?? 999);
@@ -768,7 +801,7 @@ export default function SinglePageLeaderboard({
                         const isShortlisted = effectiveStatus === 'SHORTLISTED' || effectiveStatus === 'FAST_TRACK';
                         const isIneligible = effectiveStatus === 'INELIGIBLE' || effectiveStatus === 'DISQUALIFIED' || team.eligibility_status === 'DISQUALIFIED';
                         const override = teamOverrides[team.team_id];
-                        const displayRank = isSimulationActive ? (team.simulated_rank ?? idx + 1) : (team.rank ?? idx + 1);
+                        const displayRank = isIneligible ? null : (isSimulationActive ? team.simulated_rank : team.rank);
                         const displayScore = isSimulationActive ? (team.simulated_score ?? team.total_score) : team.total_score;
 
                         return (
@@ -784,20 +817,26 @@ export default function SinglePageLeaderboard({
                             {/* Rank Column with Optional Simulation Delta */}
                             <td className="p-3 text-center">
                               <div className="flex flex-col items-center justify-center gap-0.5">
-                                <span
-                                  className={`inline-flex items-center justify-center w-7 h-7 rounded-lg font-mono font-black text-xs border-2 border-[#0F172A] ${
-                                    displayRank === 1
-                                      ? 'bg-amber-300 text-amber-900 shadow-[2px_2px_0px_#0F172A]'
-                                      : displayRank === 2
-                                      ? 'bg-slate-300 text-slate-900 shadow-[2px_2px_0px_#0F172A]'
-                                      : displayRank === 3
-                                      ? 'bg-amber-600 text-white shadow-[2px_2px_0px_#0F172A]'
-                                      : 'bg-white text-slate-700'
-                                  }`}
-                                >
-                                  #{displayRank}
-                                </span>
-                                {isSimulationActive && team.rank_delta !== undefined && team.rank_delta !== 0 && (
+                                {isIneligible ? (
+                                  <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-md font-mono font-bold text-[10px] bg-rose-100 text-rose-800 border border-rose-300 shadow-xs">
+                                    DQ
+                                  </span>
+                                ) : (
+                                  <span
+                                    className={`inline-flex items-center justify-center w-7 h-7 rounded-lg font-mono font-black text-xs border-2 border-[#0F172A] ${
+                                      displayRank === 1
+                                        ? 'bg-amber-300 text-amber-900 shadow-[2px_2px_0px_#0F172A]'
+                                        : displayRank === 2
+                                        ? 'bg-slate-300 text-slate-900 shadow-[2px_2px_0px_#0F172A]'
+                                        : displayRank === 3
+                                        ? 'bg-amber-600 text-white shadow-[2px_2px_0px_#0F172A]'
+                                        : 'bg-white text-slate-700'
+                                    }`}
+                                  >
+                                    #{displayRank ?? idx + 1}
+                                  </span>
+                                )}
+                                {!isIneligible && isSimulationActive && team.rank_delta !== undefined && team.rank_delta !== 0 && (
                                   <span
                                     className={`text-[9px] font-mono font-black px-1 rounded ${
                                       team.rank_delta > 0
