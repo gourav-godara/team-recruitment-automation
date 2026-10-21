@@ -359,7 +359,9 @@ class EvaluationService:
                             skills=skills_list,
                             experience_years=exp_years,
                             missing_fields=list(set(missing_fields)),
-                            extra_data={"declared_gender": mr.gender, "resume_url": mr.resume_url},
+                            gender=mr.gender,
+                            declared_gender=mr.gender,
+                            extra_data={"gender": mr.gender, "declared_gender": mr.gender, "resume_url": mr.resume_url},
                             is_valid=True,
                         )
                         engine_m = adapt_member_data_to_engine_member(m_data)

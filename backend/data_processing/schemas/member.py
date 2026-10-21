@@ -18,6 +18,8 @@ class MemberData(BaseModel):
     skills: List[str] = Field(default_factory=list, description="Normalized list of skills/technologies")
     experience_years: Optional[float] = Field(default=None, description="Years of relevant experience")
     education: Optional[str] = Field(default=None, description="Education, degree, or university")
+    gender: Optional[str] = Field(default=None, description="Gender of the member ('female', 'male', 'other')")
+    declared_gender: Optional[str] = Field(default=None, description="Self-reported or resolved gender")
     missing_fields: List[str] = Field(default_factory=list, description="Standard fields missing in the input")
     extra_data: Dict[str, Any] = Field(default_factory=dict, description="Custom or unmapped fields")
     is_valid: bool = Field(default=True, description="Whether this member record passed validation")

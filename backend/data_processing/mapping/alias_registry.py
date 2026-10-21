@@ -126,6 +126,21 @@ MEMBER_ALIASES: Dict[str, List[str]] = {
         "qualification",
         "branch",
     ],
+    "gender": [
+        "gender",
+        "declared_gender",
+        "sex",
+        "gender_identity",
+        "gender_code",
+        "biological_sex",
+        "diversity",
+        "female",
+        "girl",
+        "woman",
+        "candidate_gender",
+        "member_gender",
+        "participant_gender",
+    ],
 }
 
 # Standard synonyms for team attributes

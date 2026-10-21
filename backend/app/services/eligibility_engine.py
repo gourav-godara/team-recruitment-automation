@@ -119,7 +119,12 @@ def evaluate_single_rule(team: Team, rule: RuleConfig) -> RuleResult:
     affected_members: List[AffectedMemberDetail] = []
 
     for m in team.members:
-        sig = m.signals.get(rule.field)
+        target_f = rule.field or ""
+        sig = m.signals.get(target_f)
+        if (sig is None or sig.status == SignalState.MISSING or sig.value is None) and target_f in ("declared_gender", "gender", "female", "girl", "diversity"):
+            alt_sig = m.signals.get("declared_gender") or m.signals.get("gender")
+            if alt_sig and alt_sig.status != SignalState.MISSING and alt_sig.value is not None:
+                sig = alt_sig
         if sig is None:
             sig = SignalValue(value=None, status=SignalState.MISSING)
         member_signals.append(sig)

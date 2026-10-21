@@ -19,6 +19,7 @@ if _dp_path not in sys.path:
 from schemas.import_result import ImportResult
 from schemas.member import MemberData
 from schemas.team import TeamData
+from normalization.gender_detector import detect_gender_from_name, normalize_gender
 
 from backend.app.schemas.scoring import (
     Member,
@@ -306,18 +307,18 @@ def adapt_member_data_to_engine_member(m: MemberData) -> Member:
     else:
         signals["email"] = SignalValue(value=None, status=SignalState.MISSING)
 
-    # 7.1 Declared Gender (Self-reported, never inferred)
-    raw_gender = getattr(m, "gender", None) or m.extra_data.get("declared_gender") or m.extra_data.get("gender")
-    if raw_gender is not None and str(raw_gender).strip():
-        clean_g = str(raw_gender).strip().lower()
-        if clean_g in ("f", "female"):
-            clean_g = "female"
-        elif clean_g in ("m", "male"):
-            clean_g = "male"
-        elif clean_g in ("o", "other"):
-            clean_g = "other"
-        elif clean_g in ("n", "non-binary", "nonbinary"):
-            clean_g = "non-binary"
+    # 7.1 Gender Resolution (Declared in CSV, with robust name detection fallback if missing)
+    raw_gender = getattr(m, "gender", None) or getattr(m, "declared_gender", None)
+    if not raw_gender and isinstance(getattr(m, "extra_data", None), dict):
+        for k, v in m.extra_data.items():
+            if k.lower().strip() in ("gender", "declared_gender", "sex", "gender_identity"):
+                raw_gender = v
+                break
+    clean_g = normalize_gender(raw_gender) if raw_gender else None
+    if not clean_g and m.name:
+        clean_g = detect_gender_from_name(m.name)
+
+    if clean_g:
         signals["gender"] = SignalValue(value=clean_g, status=SignalState.PRESENT)
         signals["declared_gender"] = SignalValue(value=clean_g, status=SignalState.PRESENT)
     else:

@@ -315,12 +315,34 @@ def evaluate_operator(actual: Any, op: RuleOperator, expected: Any) -> bool:
                 isinstance(actual, (int, float, bool)) and isinstance(expected, (int, float, bool))
             ):
                 return False
+            if isinstance(actual, str) and isinstance(expected, str):
+                act_s = actual.strip().lower()
+                exp_s = expected.strip().lower()
+                if act_s == exp_s:
+                    return True
+                female_syns = {"female", "f", "woman", "girl", "w", "women"}
+                if exp_s in female_syns and act_s in female_syns:
+                    return True
+                male_syns = {"male", "m", "man", "boy", "men"}
+                if exp_s in male_syns and act_s in male_syns:
+                    return True
+                return False
             return actual == expected
         elif op == RuleOperator.NEQ:
             if isinstance(actual, bool) != isinstance(expected, bool) and (
                 isinstance(actual, (int, float, bool)) and isinstance(expected, (int, float, bool))
             ):
                 return True
+            if isinstance(actual, str) and isinstance(expected, str):
+                act_s = actual.strip().lower()
+                exp_s = expected.strip().lower()
+                female_syns = {"female", "f", "woman", "girl", "w", "women"}
+                if exp_s in female_syns and act_s in female_syns:
+                    return False
+                male_syns = {"male", "m", "man", "boy", "men"}
+                if exp_s in male_syns and act_s in male_syns:
+                    return False
+                return act_s != exp_s
             return actual != expected
         elif op == RuleOperator.GT:
             if isinstance(actual, bool) or isinstance(expected, bool):

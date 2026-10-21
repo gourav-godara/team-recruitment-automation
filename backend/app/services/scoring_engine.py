@@ -413,6 +413,11 @@ def calculate_member_score(
             base += min(15.0, len(skills_list) * 2.5)
         member_score = round(min(98.0, max(40.0, base)), 1)
 
+    cand_gender = None
+    g_sig = member.signals.get("declared_gender") or member.signals.get("gender")
+    if g_sig and g_sig.status == SignalState.PRESENT and g_sig.value:
+        cand_gender = str(g_sig.value).title()
+
     return MemberScoreResult(
         member_id=member.member_id,
         name=member.name,
@@ -431,6 +436,7 @@ def calculate_member_score(
         experience_years=exp_years,
         experience_source=exp_source,
         skills=skills_list,
+        declared_gender=cand_gender,
         missing_fields=missing_fields,
         warnings=warnings,
         public_repos=pub_repos,

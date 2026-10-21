@@ -148,14 +148,25 @@ class ConfigurableRuleEngine:
 
         for m in team.members:
             m_name = m.name or m.member_id
-            sig = m.signals.get(rule.field or "")
+            target_f = rule.field or ""
+            sig = m.signals.get(target_f)
+            if (sig is None or sig.status == SignalState.MISSING or sig.value is None) and target_f in ("declared_gender", "gender", "female", "girl", "diversity"):
+                alt_sig = m.signals.get("declared_gender") or m.signals.get("gender")
+                if alt_sig and alt_sig.status != SignalState.MISSING and alt_sig.value is not None:
+                    sig = alt_sig
             if sig is None or sig.status == SignalState.MISSING or sig.value is None:
                 unknown_members.append(m_name)
             elif sig.status == SignalState.INVALID:
                 unknown_members.append(m_name)
             else:
                 actual_val = str(sig.value).strip().lower()
+                female_syns = {"female", "f", "woman", "girl", "w", "women"}
+                male_syns = {"male", "m", "man", "boy", "men"}
                 if target_val is None or actual_val == target_val:
+                    qualifying_members.append(m_name)
+                elif target_val in female_syns and actual_val in female_syns:
+                    qualifying_members.append(m_name)
+                elif target_val in male_syns and actual_val in male_syns:
                     qualifying_members.append(m_name)
                 else:
                     non_qualifying_members.append(m_name)

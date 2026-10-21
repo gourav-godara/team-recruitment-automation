@@ -44,6 +44,18 @@ app.add_middleware(
 )
 
 
+@app.get("/")
+@app.head("/")
+def root_status():
+    return {
+        "status": "ok",
+        "service": "team-recruitment-automation",
+        "version": "2.0.0",
+        "health": "/health",
+        "docs": "/docs",
+    }
+
+
 @app.get("/health")
 def health_check():
     return {

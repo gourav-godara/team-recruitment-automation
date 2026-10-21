@@ -4,6 +4,7 @@ import re
 from typing import Any, Dict, List
 
 from normalization.experience_normalizer import ExperienceNormalizer
+from normalization.gender_detector import detect_gender_from_name, normalize_gender
 from normalization.link_normalizer import LinkNormalizer
 from normalization.skill_normalizer import SkillNormalizer
 
@@ -77,6 +78,22 @@ class NormalizationService:
         if raw_exp is not None and norm_exp is None and str(raw_exp).strip():
             # Keep original raw text for review (e.g. "student", "freshman", "three years")
             extra_data["raw_experience_unparsed"] = str(raw_exp).strip()
+
+        # 7. Normalize Gender (and fallback to high-precision name detection if missing)
+        raw_gender = normalized.get("gender") or normalized.get("declared_gender")
+        if not raw_gender:
+            for k, v in extra_data.items():
+                if k.lower().strip() in ("gender", "declared_gender", "sex", "gender_identity"):
+                    raw_gender = v
+                    break
+        norm_gender = normalize_gender(raw_gender)
+        if not norm_gender and normalized.get("name"):
+            norm_gender = detect_gender_from_name(normalized["name"])
+        if norm_gender:
+            normalized["gender"] = norm_gender
+            normalized["declared_gender"] = norm_gender
+            extra_data["gender"] = norm_gender
+            extra_data["declared_gender"] = norm_gender
 
         normalized["extra_data"] = extra_data
         return normalized

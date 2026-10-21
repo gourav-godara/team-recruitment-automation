@@ -1375,9 +1375,15 @@ export default function SinglePageLeaderboard({
                                       : '💻 GitHub Verified Track Record'}
                                   </span>
 
-                                  {!isBlindReview && member.declared_gender && (
-                                    <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 font-mono text-[10px]">
-                                      Gender: {member.declared_gender}
+                                  {!isBlindReview && (member.declared_gender || member.gender) && (
+                                    <span
+                                      className={`px-2 py-0.5 rounded-md font-mono text-[10px] font-bold border flex items-center gap-1 ${
+                                        String(member.declared_gender || member.gender).toLowerCase() === 'female'
+                                          ? 'bg-fuchsia-50 text-fuchsia-800 border-fuchsia-200'
+                                          : 'bg-slate-100 text-slate-700 border-slate-200'
+                                      }`}
+                                    >
+                                      {String(member.declared_gender || member.gender).toLowerCase() === 'female' ? '♀ Female' : '♂ Male'}
                                     </span>
                                   )}
                                 </div>

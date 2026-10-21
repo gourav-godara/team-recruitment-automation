@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Union
 from schemas.import_result import ImportResult
 from schemas.member import MemberData
 from schemas.team import TeamData
+from normalization.gender_detector import detect_gender_from_name, normalize_gender
 
 from backend.app.models.entities import (
     AuditLog,
@@ -31,9 +32,9 @@ def normalize_gender_code(val: Any) -> Optional[str]:
     s = str(val).strip().upper()
     if not s:
         return None
-    if s.startswith("F"):
+    if s.startswith("F") or s.startswith("GIRL") or s.startswith("WOMAN"):
         return "F"
-    if s.startswith("M"):
+    if s.startswith("M") or s.startswith("BOY") or s.startswith("MAN"):
         return "M"
     if s.startswith("O"):
         return "O"
@@ -194,11 +195,14 @@ class ImportRepository:
 
             # 3. Iterate through members
             for m in t.members:
-                raw_gender = None
-                if isinstance(m.extra_data, dict):
-                    raw_gender = m.extra_data.get("gender") or m.extra_data.get("declared_gender")
-                if raw_gender is None and hasattr(m, "gender"):
-                    raw_gender = getattr(m, "gender")
+                raw_gender = getattr(m, "gender", None) or getattr(m, "declared_gender", None)
+                if not raw_gender and isinstance(m.extra_data, dict):
+                    for k, v in m.extra_data.items():
+                        if k.lower().strip() in ("gender", "declared_gender", "sex", "gender_identity"):
+                            raw_gender = v
+                            break
+                if not raw_gender and m.name:
+                    raw_gender = detect_gender_from_name(m.name)
 
                 member_row = Member(
                     team_id=team_row.id,
@@ -355,16 +359,21 @@ class ImportRepository:
                         missing_fields.append(sig.criterion_key)
 
                 gender_val = mr.gender
+                if not gender_val and mr.full_name:
+                    gender_val = detect_gender_from_name(mr.full_name)
+
                 if gender_val:
                     g_up = str(gender_val).strip().upper()
-                    if g_up == "F":
-                        gender_val = "Female"
-                    elif g_up == "M":
-                        gender_val = "Male"
-                    elif g_up == "O":
-                        gender_val = "Other"
-                    elif g_up == "N":
-                        gender_val = "Non-binary"
+                    if g_up.startswith("F") or g_up in ("FEMALE", "GIRL", "WOMAN"):
+                        gender_val = "female"
+                    elif g_up.startswith("M") or g_up in ("MALE", "BOY", "MAN"):
+                        gender_val = "male"
+                    elif g_up.startswith("O"):
+                        gender_val = "other"
+                    elif g_up.startswith("N"):
+                        gender_val = "non-binary"
+                    else:
+                        gender_val = str(gender_val).lower()
 
                 member = MemberData(
                     id=str(mr.id),
@@ -377,6 +386,8 @@ class ImportRepository:
                     skills=skills_list,
                     experience_years=exp_years,
                     education=None,
+                    gender=gender_val,
+                    declared_gender=gender_val,
                     missing_fields=list(set(missing_fields)),
                     extra_data={"gender": gender_val, "declared_gender": gender_val, "resume_url": mr.resume_url},
                     is_valid=True,

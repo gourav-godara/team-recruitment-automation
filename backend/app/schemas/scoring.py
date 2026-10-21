@@ -339,6 +339,7 @@ class MemberScoreResult(BaseModel):
     experience_years: Optional[float] = None
     experience_source: Optional[str] = None  # e.g. "Declared in CSV", "Inferred from Skills", "Not provided"
     skills: List[str] = Field(default_factory=list)
+    declared_gender: Optional[str] = None
     missing_fields: List[str] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
     public_repos: Optional[int] = None

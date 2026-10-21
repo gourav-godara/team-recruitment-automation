@@ -101,6 +101,8 @@ class SchemaMapper:
             "skills": [],
             "experience_years": None,
             "education": None,
+            "gender": None,
+            "declared_gender": None,
             "extra_data": {},
             "missing_fields": [],
         }
@@ -113,9 +115,19 @@ class SchemaMapper:
             if target_field in canonical_data and target_field not in ["extra_data", "missing_fields", "id"]:
                 if target_field == "is_lead":
                     canonical_data["is_lead"] = self._parse_bool(raw_v)
+                elif target_field in ("gender", "declared_gender"):
+                    canonical_data["gender"] = raw_v
+                    canonical_data["declared_gender"] = raw_v
+                    canonical_data["extra_data"]["gender"] = raw_v
+                    canonical_data["extra_data"]["declared_gender"] = raw_v
                 else:
                     canonical_data[target_field] = raw_v
             else:
+                if norm_k in ("gender", "declared_gender", "sex", "gender_identity"):
+                    canonical_data["gender"] = raw_v
+                    canonical_data["declared_gender"] = raw_v
+                    canonical_data["extra_data"]["gender"] = raw_v
+                    canonical_data["extra_data"]["declared_gender"] = raw_v
                 if raw_v not in (None, ""):
                     canonical_data["extra_data"][raw_k] = raw_v
 
